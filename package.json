@@ -1,0 +1,33 @@
+{
+  "name": "kippu-api",
+  "type": "module",
+  "version": "1.0.0",
+  "description": "API for Kippu",
+  "main": "index.js",
+  "scripts": {
+    "dev": "npx tsx watch index.ts",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/KippuRocks/kippu-api.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/KippuRocks/kippu-api/issues"
+  },
+  "homepage": "https://github.com/KippuRocks/kippu-api#readme",
+  "dependencies": {
+    "@ticketto/types": "^1.1.4",
+    "@ticketto/web-stub": "^1.2.1",
+    "fastify": "^5.2.1",
+    "inversify": "^7.0.1",
+    "indexeddbshim": "^13.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.9",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.2"
+  }
+}
