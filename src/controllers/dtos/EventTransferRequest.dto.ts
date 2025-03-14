@@ -1,6 +1,6 @@
-import { Event } from "@ticketto/types"
+import { Event } from "@ticketto/types";
 
 export interface EventTransferRequestDto {
-    id: number;
-    newOwner: Omit<Event, "id">;
+  id: number;
+  newOwner: Omit<Event, "id">;
 }

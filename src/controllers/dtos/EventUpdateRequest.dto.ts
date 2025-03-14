@@ -1,6 +1,6 @@
-import { Event } from "@ticketto/types"
+import { Event } from "@ticketto/types";
 
 export interface EventUpdateRequestDto {
-    id: number;
-    event: Partial<Omit<Event, "id">>;
+  id: number;
+  event: Partial<Omit<Event, "id">>;
 }

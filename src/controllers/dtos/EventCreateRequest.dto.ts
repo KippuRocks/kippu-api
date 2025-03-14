@@ -1,6 +1,6 @@
-import { AccountId, Event } from "@ticketto/types"
+import { AccountId, Event } from "@ticketto/types";
 
 export interface EventCreateRequestDto {
-    owner: AccountId;
-    event: Omit<Event, "id">;
+  owner: AccountId;
+  event: Omit<Event, "id">;
 }
