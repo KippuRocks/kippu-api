@@ -1,3 +1,5 @@
+import "./src/idb.js";
+
 import { TYPES } from "./src/symbols.js";
 import { TickettoClientBuilder } from "@ticketto/protocol";
 import { TickettoWebStubConsumer } from "@ticketto/web-stub";
