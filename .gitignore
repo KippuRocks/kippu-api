@@ -1,3 +1,4 @@
+.env
 HELP.md
 .gradle
 build/
@@ -38,4 +39,3 @@ out/
 
 ### Kotlin ###
 .kotlin
-.env
