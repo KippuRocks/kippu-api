@@ -1,9 +1,11 @@
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+
 plugins {
 	kotlin("jvm") version "1.9.25"
 	kotlin("plugin.spring") version "1.9.25"
 	id("org.springframework.boot") version "3.5.3"
 	id("io.spring.dependency-management") version "1.1.7"
-	kotlin("plugin.jpa") version "1.9.25"
+	kotlin("plugin.serialization") version "2.2.0"
 }
 
 group = "xyz.kippurocks"
@@ -20,16 +22,14 @@ repositories {
 }
 
 dependencies {
-	implementation("com.okta.spring:okta-spring-boot-starter:3.0.5")
-	implementation("org.thymeleaf.extras:thymeleaf-extras-springsecurity6")
-	implementation("nz.net.ultraq.thymeleaf:thymeleaf-layout-dialect")
-	implementation("org.springframework.boot:spring-boot-starter-data-jpa")
 	implementation("org.springframework.boot:spring-boot-starter-mustache")
 	implementation("org.springframework.boot:spring-boot-starter-web")
 	implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
+	implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.1")
 	implementation("org.jetbrains.kotlin:kotlin-reflect")
+	implementation("org.springframework.boot:spring-boot-starter-data-mongodb")
+
 	developmentOnly("org.springframework.boot:spring-boot-devtools")
-	runtimeOnly("com.h2database:h2")
 	testImplementation("org.springframework.boot:spring-boot-starter-test")
 	testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
 	testRuntimeOnly("org.junit.platform:junit-platform-launcher")

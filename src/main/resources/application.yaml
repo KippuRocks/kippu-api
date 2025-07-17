@@ -1,11 +1,9 @@
 spring:
     application:
         name: Kippu-api
-okta:
-    oauth2:
-        issuer: https://dev-1en3780j.us.auth0.com/
-        client-id: tmyMTljSIF4g5ks5aj9CppUyKHSG0RQj
-        client-secret: ${AUTH0_CLIENT_SECRET}
+    data:
+        mongodb:
+            uri: ${MONGO_URL}
 
 server:
     port: 3000
