@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-GH_OWNER=${1:?“Missing GitHub owner/org (arg1)”}
-GH_OWNER="${GH_OWNER_RAW,,}"
+if [ "$#" -lt 2 ]; then
+  echo "Usage: $0 <owner> <image-name> [tag]" >&2
+  exit 1
+fi
+
+GH_OWNER="${1,,}"
 IMAGE_NAME=${2:?“Missing image name (arg2)”}
 TAG=${3:-latest}
 
