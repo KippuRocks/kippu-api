@@ -2,13 +2,12 @@
 set -euo pipefail
 
 GH_OWNER=${1:?“Missing GitHub owner/org (arg1)”}
+GH_OWNER="${GH_OWNER_RAW,,}"
 IMAGE_NAME=${2:?“Missing image name (arg2)”}
 TAG=${3:-latest}
 
-# Use GitHub Container Registry hostname
 FULL_IMAGE="ghcr.io/${GH_OWNER}/${IMAGE_NAME}:${TAG}"
 
-# Move to repo root (where Dockerfile lives)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="${SCRIPT_DIR}/.."
 cd "${ROOT_DIR}"
