@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+GH_OWNER=${1:?“Missing GitHub owner/org (arg1)”}
+IMAGE_NAME=${2:?“Missing image name (arg2)”}
+TAG=${3:-latest}
+
+# Use GitHub Container Registry hostname
+FULL_IMAGE="ghcr.io/${GH_OWNER}/${IMAGE_NAME}:${TAG}"
+
+# Move to repo root (where Dockerfile lives)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="${SCRIPT_DIR}/.."
+cd "${ROOT_DIR}"
+
+echo "→ Building Docker image ${FULL_IMAGE}"
+docker build -t "${FULL_IMAGE}" .
+
+echo "→ Logging in to GitHub Container Registry (ghcr.io)"
+# In CI: ensure GITHUB_TOKEN or a PAT is exported as GHCR_TOKEN
+echo "${GHCR_TOKEN:?“Please set GHCR_TOKEN”}" \
+  | docker login ghcr.io --username "${GH_OWNER}" --password-stdin
+
+echo "→ Pushing ${FULL_IMAGE} to GHCR"
+docker push "${FULL_IMAGE}"
+
+echo "✅ Done! Image available at https://ghcr.io/${GH_OWNER}/${IMAGE_NAME}"
