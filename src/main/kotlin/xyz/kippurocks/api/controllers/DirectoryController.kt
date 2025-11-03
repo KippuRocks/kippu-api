@@ -23,7 +23,7 @@ class DirectoryController(
     @GetMapping
     @Operation(
         summary = "Search contacts",
-        description = "Searches for contacts by criteria. Note: Credentials are never returned in directory responses for security reasons."
+        description = "Searches for contacts by criteria. Note: Credentials are never returned in directory responses for security reasons. If no search criteria is provided, returns an empty list."
     )
     @ApiResponse(
         responseCode = "200",
@@ -31,10 +31,10 @@ class DirectoryController(
         content = [Content(schema = Schema(implementation = Array<DirectoryUserDto>::class))]
     )
     fun getContactsBy(
-        @Parameter(description = "Search criteria", example = "john")
-        @RequestParam by: String
+        @Parameter(description = "Search criteria (optional - if not provided, returns empty list)", example = "john", required = false)
+        @RequestParam(required = false) by: String?
     ): List<DirectoryUserDto> {
-        return if (by.isEmpty()) emptyList()
+        return if (by.isNullOrBlank()) emptyList()
         else usersService.getDirectoryUsersBy(SearchCriteria(by))
     }
 }
