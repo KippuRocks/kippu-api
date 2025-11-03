@@ -3,6 +3,9 @@ package xyz.kippurocks.api.controllers
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.http.converter.HttpMessageNotReadableException
+import org.springframework.security.access.AccessDeniedException
+import org.springframework.security.authentication.BadCredentialsException
+import org.springframework.security.core.AuthenticationException
 import org.springframework.web.bind.MethodArgumentNotValidException
 import org.springframework.web.bind.annotation.ControllerAdvice
 import org.springframework.web.bind.annotation.ExceptionHandler
@@ -93,6 +96,36 @@ class GlobalExceptionHandler {
             .body(ErrorResponse(
                 message = "Database error occurred. Please try again later.",
                 status = HttpStatus.INTERNAL_SERVER_ERROR.value()
+            ))
+    }
+
+    @ExceptionHandler(BadCredentialsException::class)
+    fun handleBadCredentials(ex: BadCredentialsException): ResponseEntity<ErrorResponse> {
+        logger.warn("Authentication failed: ${ex.message}")
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+            .body(ErrorResponse(
+                message = "Invalid client credentials. Please check your clientId and clientSecret.",
+                status = HttpStatus.UNAUTHORIZED.value()
+            ))
+    }
+
+    @ExceptionHandler(AuthenticationException::class)
+    fun handleAuthenticationException(ex: AuthenticationException): ResponseEntity<ErrorResponse> {
+        logger.warn("Authentication error: ${ex.message}")
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+            .body(ErrorResponse(
+                message = "Authentication required. Please provide valid Basic Authentication credentials.",
+                status = HttpStatus.UNAUTHORIZED.value()
+            ))
+    }
+
+    @ExceptionHandler(AccessDeniedException::class)
+    fun handleAccessDenied(ex: AccessDeniedException): ResponseEntity<ErrorResponse> {
+        logger.warn("Access denied: ${ex.message}")
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+            .body(ErrorResponse(
+                message = "Access denied. You do not have permission to access this resource.",
+                status = HttpStatus.FORBIDDEN.value()
             ))
     }
 

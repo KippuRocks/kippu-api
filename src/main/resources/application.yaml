@@ -7,3 +7,8 @@ spring:
 
 server:
     port: 3000
+
+kippu:
+    api:
+        client-id: ${KIPPU_CLIENT_ID}
+        client-secret: ${KIPPU_CLIENT_SECRET}

@@ -6,6 +6,7 @@ import io.swagger.v3.oas.annotations.media.Content
 import io.swagger.v3.oas.annotations.media.Schema
 import io.swagger.v3.oas.annotations.responses.ApiResponse
 import io.swagger.v3.oas.annotations.responses.ApiResponses
+import io.swagger.v3.oas.annotations.security.SecurityRequirement
 import io.swagger.v3.oas.annotations.tags.Tag
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -22,6 +23,7 @@ import xyz.kippurocks.api.services.UsersService
 @RestController
 @RequestMapping("/users")
 @Tag(name = "Users", description = "User management endpoints")
+@SecurityRequirement(name = "basicAuth")
 class UsersController(
     private val usersService: UsersService
 ) {
