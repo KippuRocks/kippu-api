@@ -10,7 +10,7 @@ data class UserEntity (
     val id: ObjectId? = null,
     val username: String,
     val contact: ContactEntity,
-    val credentials: Array<String>,
+    val credentials: Array<CredentialEntity>,
 )
 
 data class ContactEntity(
