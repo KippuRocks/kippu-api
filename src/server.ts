@@ -25,9 +25,13 @@ try {
     },
   );
   server.app.log.warn(
-    { ledgerEnvironment: config.ledgerEnvironment, metadataStorage: storage !== undefined },
-    "serving over backend-memory, a software KMS and a development sponsor: ledger state and " +
-      "organiser keys live in this process's memory and are lost when it exits",
+    {
+      ledgerEnvironment: config.ledgerEnvironment,
+      metadataStorage: storage !== undefined,
+      sponsor: config.sponsorRelayUrl ?? "development sponsor",
+    },
+    "serving over backend-memory and a software KMS: ledger state and organiser keys live in " +
+      "this process's memory and are lost when it exits",
   );
 } catch (error) {
   console.error(error instanceof Error ? error.message : error);

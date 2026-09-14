@@ -95,26 +95,25 @@ export function buildSponsorRelay(
     let decision: Awaited<ReturnType<Entitlements["decide"]>>;
     try {
       decision = await entitlements.decide(input.value);
-      // A refusal the copy's lag may explain is retried once the copy reflects
-      // the submitter's receipt cursor, so an entitled input is never
-      // permanently refused (REQ-SP-5, NFR-11). A refusal of a copy that already
-      // reflects that cursor is final.
+      // A refusal the copy's lag may explain is decided again once the copy
+      // reflects the submitter's receipt cursor, so an entitled input is never
+      // permanently refused (REQ-SP-5, NFR-11). It is decided again even when the
+      // copy already reflects the cursor: the reader may have committed that batch
+      // between the first decision and the check, and a refusal read from the
+      // older copy must not become final. A second refusal is.
       if (!decision.entitled && after !== undefined) {
-        const reached = await derived.waitFor(after, 0);
-        if (!reached) {
-          if (!(await derived.waitFor(after, lagWait))) {
-            return reply
-              .code(503)
-              .header("Retry-After", "1")
-              .send({
-                error: {
-                  code: "lagging",
-                  detail: `the derived copy has not reached cursor "${after}" yet; retry`,
-                },
-              });
-          }
-          decision = await entitlements.decide(input.value);
+        if (!(await derived.waitFor(after, lagWait))) {
+          return reply
+            .code(503)
+            .header("Retry-After", "1")
+            .send({
+              error: {
+                code: "lagging",
+                detail: `the derived copy has not reached cursor "${after}" yet; retry`,
+              },
+            });
         }
+        decision = await entitlements.decide(input.value);
       }
     } catch (error) {
       request.log.error(error, "the derived copy cannot be read");

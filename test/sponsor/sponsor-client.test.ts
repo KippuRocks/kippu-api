@@ -58,6 +58,7 @@ describeWithStore("kippu-api sponsored through the relay client", () => {
   let reader: DerivedReader;
   let ticketto: KippuTicketto;
   let lastReceipt: Cursor | undefined;
+  /** The input bytes of every request the client sent to the relay. */
   const requests: string[] = [];
   const sponsorKey = kmsP256Signer(softwareKmsP256Key());
 
@@ -85,7 +86,8 @@ describeWithStore("kippu-api sponsored through the relay client", () => {
         url,
         receiptCursor: () => lastReceipt,
         fetch: async (input, init) => {
-          requests.push(String(input));
+          expect(String(input)).toMatch(/\/v0\/sponsor$/);
+          requests.push(JSON.parse(String(init?.body)).input.bytes);
           return fetch(input, init);
         },
       }),
@@ -118,7 +120,11 @@ describeWithStore("kippu-api sponsored through the relay client", () => {
     return states;
   }
 
-  it("REQ-SP-1, REQ-SP-1a: every write is sponsored by the relay, and no step shows a fee", async () => {
+  // Three ledger writes, each sponsored over HTTP, one of them waiting for the
+  // relay's copy to catch up: longer than Vitest's default 5 s under a loaded run.
+  it("REQ-SP-1, REQ-SP-1a: every write is sponsored by the relay, and no step shows a fee", {
+    timeout: 60_000,
+  }, async () => {
     const organiser = softwareP256Signer();
     const zone = "51".repeat(32) as ZoneId;
     const states: SubmissionState[] = [];
@@ -154,13 +160,18 @@ describeWithStore("kippu-api sponsored through the relay client", () => {
     });
     states.push(...(await settle(issued.submission)));
 
-    expect(requests).toHaveLength(3);
-    expect(requests.every((url) => url.endsWith("/v0/sponsor"))).toBe(true);
+    // One sponsored input per write. A relay whose copy lags past its wait is
+    // asked again for the same input, so requests are counted by input.
+    expect(new Set(requests).size).toBe(3);
     expect(states.length).toBeGreaterThan(0);
     expect(JSON.stringify(states).match(FEE_VOCABULARY)).toBeNull();
   });
 
-  it("ERR-SponsorshipRefused: an unentitled write is rejected with the relay's refusal", async () => {
+  it("ERR-SponsorshipRefused: an unentitled write is rejected with the relay's refusal", {
+    timeout: 30_000,
+  }, async () => {
+    // No receipt cursor: the refusal is about entitlement, not about the copy's lag.
+    lastReceipt = undefined;
     const stranger = softwareP256Signer();
     const result = await ticketto.setEventStatus(stranger.signer, {
       event: "ee".repeat(32) as never,

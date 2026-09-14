@@ -1,3 +1,4 @@
+import { createRelaySponsor } from "@kippu/sponsorship";
 import type { FastifyInstance, FastifyServerOptions } from "fastify";
 import { buildApp } from "./app.js";
 import { createAuditLog } from "./audit/audit-log.js";
@@ -12,6 +13,7 @@ import { createDerivedReader, type DerivedReader } from "./derived/reader.js";
 import { createReads } from "./derived/reads.js";
 import { createEvents } from "./events/service.js";
 import { developmentSponsor } from "./ledger/development-sponsor.js";
+import { type ReceiptTracker, trackReceipts } from "./ledger/receipts.js";
 import { type KippuTicketto, makeTicketto } from "./ledger/ticketto.js";
 import { createMetadataDocuments } from "./metadata/documents.js";
 import type { MetadataStorage } from "./metadata/storage.js";
@@ -63,13 +65,14 @@ const NO_METADATA_STORAGE: Pick<MetadataStorage, "get"> = { get: async () => nul
  * (`F-025`); and, given object storage, metadata document editing (`F-026`).
  *
  * In `development` and `test` they run over `backend-memory`, a software KMS for
- * organiser keys, and a development sponsor — all in this process's memory, so
+ * organiser keys, and a development sponsor — unless `KIPPU_SPONSOR_URL` names
+ * the sponsor relay, whose client then sponsors every write — all in this process's memory, so
  * the ledger, and every organiser key, is gone when it exits. `production` is
  * refused: it needs `binding-offchain`, a KMS provider and the sponsor relay's
  * client, and the first two do not exist yet.
  */
 export function createDomainServices(
-  config: Pick<Config, "ledgerEnvironment" | "login" | "holderRpId">,
+  config: Pick<Config, "ledgerEnvironment" | "login" | "holderRpId" | "sponsorRelayUrl">,
   store: Store,
   options: WiringOptions = {},
 ): DomainServices {
@@ -82,12 +85,26 @@ export function createDomainServices(
     );
   }
   const publicUrl = options.metadataPublicUrl;
-  const ledger = makeTicketto({
-    environment,
-    holderRpId: config.holderRpId,
-    sponsor: developmentSponsor(),
-    operationLifetime: DEVELOPMENT_OPERATION_LIFETIME,
-  });
+  // Sponsored through the relay when one is configured, with its entitlements and
+  // the latest receipt cursor; otherwise by the development sponsor (F-023).
+  let receipts: ReceiptTracker | undefined;
+  const sponsor =
+    config.sponsorRelayUrl === undefined
+      ? developmentSponsor()
+      : createRelaySponsor({
+          url: config.sponsorRelayUrl,
+          receiptCursor: () => receipts?.latest(),
+        });
+  const tracked = trackReceipts(
+    makeTicketto({
+      environment,
+      holderRpId: config.holderRpId,
+      sponsor,
+      operationLifetime: DEVELOPMENT_OPERATION_LIFETIME,
+    }),
+  );
+  receipts = tracked.receipts;
+  const ledger = tracked.ledger;
   const audit = createAuditLog(store);
   const authority = createOrganiserAuthority({
     store,
@@ -148,7 +165,7 @@ export interface KippuServer {
 
 /** The API server's application, with its domain services mounted. */
 export function createServer(
-  config: Pick<Config, "ledgerEnvironment" | "login" | "holderRpId">,
+  config: Pick<Config, "ledgerEnvironment" | "login" | "holderRpId" | "sponsorRelayUrl">,
   store: Store,
   options: FastifyServerOptions = {},
   wiring: WiringOptions = {},
