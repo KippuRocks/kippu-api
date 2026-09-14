@@ -7,6 +7,11 @@
 
 export { type KmsP256Key, type KmsSignature, kmsP256Signer } from "./kms.js";
 export {
+  createRelaySponsor,
+  RelayProtocolError,
+  type RelaySponsorOptions,
+} from "./relay-client.js";
+export {
   BOUND_ID_LENGTH,
   decodeSponsorship,
   encodeSponsorship,
