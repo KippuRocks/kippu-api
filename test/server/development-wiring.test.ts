@@ -47,7 +47,7 @@ describe("the development wiring", () => {
       environment("postgres://kippu_api:x@127.0.0.1:1/kippu_api", "production"),
     );
     expect(() => createDomainServices(config, {} as never)).toThrow(WiringError);
-    expect(() => createDomainServices(config, {} as never)).toThrow(/binding-offchain/);
+    expect(() => createDomainServices(config, {} as never)).toThrow(/KMS provider/);
   });
 });
 

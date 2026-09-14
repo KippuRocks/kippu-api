@@ -52,6 +52,9 @@ export function organiserKmsFor(environment: LedgerEnvironment): OrganiserKms {
   switch (environment) {
     case "development":
     case "test":
+    // No KMS provider is chosen, so staging uses the software stand-in too: its keys are
+    // lost when the process exits, while the ledger service keeps what they signed (T-023-08).
+    case "staging":
       return softwareOrganiserKms();
     case "production":
       throw new Error(

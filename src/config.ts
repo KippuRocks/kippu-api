@@ -23,7 +23,7 @@ export interface Config {
    * `development` and `test` use `backend-memory`, a software KMS and a
    * development sponsor; `production` is refused until real ones exist.
    */
-  readonly ledgerEnvironment: "development" | "test" | "production";
+  readonly ledgerEnvironment: "development" | "test" | "staging" | "production";
   /**
    * The sponsor relay's base URL (`F-023`). When set, every ledger write is
    * sponsored through the relay's client (`createRelaySponsor`), with its
@@ -31,6 +31,12 @@ export interface Config {
    * sponsor.
    */
   readonly sponsorRelayUrl?: string;
+  /**
+   * The ledger service's endpoint (`ticketto-offchain`'s wire protocol, `C4`), in
+   * `staging`: an http(s) URL, never a database. Kippu reaches ledger state only
+   * through the SDK (`REQ-SDK-9`).
+   */
+  readonly ledgerServiceUrl?: string;
 }
 
 export type Environment = Readonly<Record<string, string | undefined>>;
@@ -128,7 +134,7 @@ function readOrigins(key: string, value: string | undefined, rpId: string): read
   });
 }
 
-const LEDGER_ENVIRONMENTS = ["development", "test", "production"] as const;
+const LEDGER_ENVIRONMENTS = ["development", "test", "staging", "production"] as const;
 
 /** Required, with no default: a deployment must never fall into the development wiring by omission. */
 function readLedgerEnvironment(value: string | undefined): Config["ledgerEnvironment"] {
@@ -141,19 +147,48 @@ function readLedgerEnvironment(value: string | undefined): Config["ledgerEnviron
   return found;
 }
 
-/** The sponsor relay's base URL, when configured: an http(s) origin, optionally with a path. */
-function readSponsorRelayUrl(value: string | undefined): { sponsorRelayUrl?: string } {
-  if (value === undefined || value === "") return {};
+/** An http(s) URL from `key`, when set. */
+function readHttpUrl(key: string, value: string | undefined): string | undefined {
+  if (value === undefined || value === "") return undefined;
   let url: URL;
   try {
     url = new URL(value);
   } catch {
-    throw new ConfigError("KIPPU_SPONSOR_URL is not a URL");
+    throw new ConfigError(`${key} is not a URL`);
   }
   if (url.protocol !== "https:" && url.protocol !== "http:") {
-    throw new ConfigError("KIPPU_SPONSOR_URL must be an http:// or https:// URL");
+    throw new ConfigError(`${key} must be an http:// or https:// URL`);
   }
-  return { sponsorRelayUrl: value };
+  return value;
+}
+
+/**
+ * Where ledger writes go and who sponsors them. `staging` needs the ledger
+ * service's endpoint and the sponsor relay; the ledger service's endpoint is
+ * refused anywhere else, where the ledger is `backend-memory`.
+ */
+function readLedgerWiring(
+  environment: Config["ledgerEnvironment"],
+  env: Environment,
+): Pick<Config, "sponsorRelayUrl" | "ledgerServiceUrl"> {
+  const sponsorRelayUrl = readHttpUrl("KIPPU_SPONSOR_URL", env.KIPPU_SPONSOR_URL);
+  const ledgerServiceUrl = readHttpUrl("KIPPU_LEDGER_SERVICE_URL", env.KIPPU_LEDGER_SERVICE_URL);
+  if (environment === "staging") {
+    if (ledgerServiceUrl === undefined || sponsorRelayUrl === undefined) {
+      throw new ConfigError(
+        "KIPPU_LEDGER_ENVIRONMENT=staging needs KIPPU_LEDGER_SERVICE_URL (the ledger service) " +
+          "and KIPPU_SPONSOR_URL (the sponsor relay)",
+      );
+    }
+  } else if (ledgerServiceUrl !== undefined) {
+    throw new ConfigError(
+      `KIPPU_LEDGER_SERVICE_URL is only read in staging, not in ${environment}`,
+    );
+  }
+  return {
+    ...(sponsorRelayUrl === undefined ? {} : { sponsorRelayUrl }),
+    ...(ledgerServiceUrl === undefined ? {} : { ledgerServiceUrl }),
+  };
 }
 
 /** Refuses an environment carrying a route to any store but Kippu's own. */
@@ -181,6 +216,7 @@ export function loadConfig(env: Environment = process.env): Config {
   assertNoForeignStoreCredentials(env);
   const loginRpId = readRpId("KIPPU_LOGIN_RP_ID", env.KIPPU_LOGIN_RP_ID);
   const holderRpId = readRpId("KIPPU_HOLDER_RP_ID", env.KIPPU_HOLDER_RP_ID);
+  const ledgerEnvironment = readLedgerEnvironment(env.KIPPU_LEDGER_ENVIRONMENT);
   if (loginRpId === holderRpId) {
     throw new ConfigError(
       "KIPPU_LOGIN_RP_ID must differ from KIPPU_HOLDER_RP_ID: an organiser login passkey must " +
@@ -196,7 +232,7 @@ export function loadConfig(env: Environment = process.env): Config {
       origins: readOrigins("KIPPU_LOGIN_ORIGINS", env.KIPPU_LOGIN_ORIGINS, loginRpId),
     },
     holderRpId,
-    ledgerEnvironment: readLedgerEnvironment(env.KIPPU_LEDGER_ENVIRONMENT),
-    ...readSponsorRelayUrl(env.KIPPU_SPONSOR_URL),
+    ledgerEnvironment,
+    ...readLedgerWiring(ledgerEnvironment, env),
   };
 }

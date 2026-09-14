@@ -190,7 +190,13 @@ Writes Kippu never sees, sent directly by Saifu and Iriguchi, are covered by the
   - **Ledger state and organiser keys live only in memory.** A restart forgets every event and ticket, while the Kippu store keeps its rows; start from a fresh store after a restart.
 - **The derived copy** (`F-025`): the server starts its reader over the ledger's log, and serves the `derived` read routes with their freshness.
 - **Metadata** (`F-026`): event locators name `KIPPU_METADATA_PUBLIC_URL`. When `KIPPU_METADATA_S3_BUCKET` is set, with the rest of the `KIPPU_METADATA_*` keys, document editing is mounted over that storage and reads join the documents. Without it, editing fails, reads join no documents, and everything else is served.
-- **`production`** is refused at start-up. It needs `binding-offchain`, a KMS provider for organiser keys, and the sponsor relay's client (`T-023-07`), and none exists yet.
+- **`staging`** (`T-023-08`) runs the SDK over `binding-offchain` against a `ticketto-offchain` ledger service.
+  - `KIPPU_LEDGER_SERVICE_URL` is the service's endpoint: an http(s) URL, read only in staging. kippu-api holds no credential for the service's store, and refuses any it is given (`REQ-SDK-9`).
+  - `KIPPU_SPONSOR_URL` names the sponsor relay. Both are required.
+  - The server connects to the service before it starts, reading its assurance declaration.
+  - Organiser keys are still in the software KMS, since no provider is chosen. They are lost when the server exits, while the ledger service keeps everything they signed.
+  - The service is private and unpublished, so the end-to-end check in `test/server/staging-wiring.test.ts` runs only when `KIPPU_TEST_LEDGER_SERVICE_URL` and `KIPPU_TEST_SPONSOR_SECRET_KEY` are set: locally, and in `kippu-e2e` (`F-070`). It creates an event through tRPC and finds it in the service's log. Start the service with `TICKETTO_ENVIRONMENT=staging` and that key's sponsor account in `TICKETTO_SPONSOR_ACCOUNTS`.
+- **`production`** is refused at start-up until a KMS provider for organiser keys is chosen.
 - `test/server/development-wiring.test.ts` runs the server from its configuration, and drives the whole flow through tRPC: an organiser signs up and signs in, creates an event, uploads seat positions and defines a class; a guest links their holder account; the organiser issues them a granted ticket, edits the event's document, and reads the event back from the derived copy.
 
 ### Organiser authority (`REQ-OA-1`)

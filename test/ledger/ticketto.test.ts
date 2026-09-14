@@ -120,7 +120,8 @@ describe("makeTicketto", () => {
     expect(() => makeTicketto({ ...options, environment: "development" })).not.toThrow();
   });
 
-  it("refuses production until binding-offchain implements the backend port", () => {
+  it("refuses staging and production without a connected binding-offchain backend", () => {
+    expect(() => makeTicketto({ ...options, environment: "staging" })).toThrow(/binding-offchain/);
     expect(() => makeTicketto({ ...options, environment: "production" })).toThrow(
       /binding-offchain/,
     );

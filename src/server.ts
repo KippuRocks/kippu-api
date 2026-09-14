@@ -3,7 +3,7 @@ import { loadMetadataConfig, loadMetadataPublicUrl } from "./metadata/config.js"
 import { createS3MetadataStorage } from "./metadata/storage.js";
 import { assertMigrated } from "./store/migrate.js";
 import { createStore } from "./store/store.js";
-import { createServer, type KippuServer } from "./wiring.js";
+import { connectLedgerBackend, createServer, type KippuServer } from "./wiring.js";
 
 const config = loadConfig();
 const store = createStore(config.databaseUrl);
@@ -15,6 +15,8 @@ try {
     process.env.KIPPU_METADATA_S3_BUCKET === undefined
       ? undefined
       : createS3MetadataStorage(loadMetadataConfig().storage);
+  // Staging reaches the ledger service through binding-offchain (T-023-08).
+  const ledgerBackend = await connectLedgerBackend(config);
   server = createServer(
     config,
     store,
@@ -22,6 +24,7 @@ try {
     {
       metadataPublicUrl: loadMetadataPublicUrl(),
       ...(storage === undefined ? {} : { metadataStorage: storage }),
+      ...(ledgerBackend === undefined ? {} : { ledgerBackend }),
     },
   );
   server.app.log.warn(
@@ -29,9 +32,13 @@ try {
       ledgerEnvironment: config.ledgerEnvironment,
       metadataStorage: storage !== undefined,
       sponsor: config.sponsorRelayUrl ?? "development sponsor",
+      ledgerService: config.ledgerServiceUrl ?? "backend-memory",
     },
-    "serving over backend-memory and a software KMS: ledger state and organiser keys live in " +
-      "this process's memory and are lost when it exits",
+    config.ledgerEnvironment === "staging"
+      ? "serving over binding-offchain and a software KMS: organiser keys live in this process's " +
+          "memory and are lost when it exits, while the ledger service keeps what they signed"
+      : "serving over backend-memory and a software KMS: ledger state and organiser keys live " +
+          "in this process's memory and are lost when it exits",
   );
 } catch (error) {
   console.error(error instanceof Error ? error.message : error);
