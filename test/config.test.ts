@@ -10,6 +10,7 @@ const base = {
   KIPPU_LOGIN_RP_ID: "login.kippu.example",
   KIPPU_LOGIN_ORIGINS: "https://ibento.login.kippu.example,https://login.kippu.example",
   KIPPU_HOLDER_RP_ID: "holder.kippu.example",
+  KIPPU_LEDGER_ENVIRONMENT: "development",
 };
 
 describe("configuration", () => {
@@ -23,7 +24,18 @@ describe("configuration", () => {
         origins: ["https://ibento.login.kippu.example", "https://login.kippu.example"],
       },
       holderRpId: "holder.kippu.example",
+      ledgerEnvironment: "development",
     });
+  });
+
+  it("requires the ledger environment, with no default", () => {
+    expect(() => loadConfig({ ...base, KIPPU_LEDGER_ENVIRONMENT: undefined })).toThrow(
+      /KIPPU_LEDGER_ENVIRONMENT/,
+    );
+    expect(() => loadConfig({ ...base, KIPPU_LEDGER_ENVIRONMENT: "staging" })).toThrow(ConfigError);
+    expect(loadConfig({ ...base, KIPPU_LEDGER_ENVIRONMENT: "production" }).ledgerEnvironment).toBe(
+      "production",
+    );
   });
 
   it("the migration runner needs only the Kippu store, and refuses foreign store credentials", () => {
@@ -44,6 +56,7 @@ describe("configuration", () => {
       "databaseUrl",
       "holderRpId",
       "host",
+      "ledgerEnvironment",
       "login",
       "port",
     ]);

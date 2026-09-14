@@ -31,6 +31,11 @@ ENV PORT=8080
 WORKDIR /app
 COPY --from=prod-deps /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
+# @kippu/sponsorship is a workspace package the server imports: its manifest, build
+# output and the links to its dependencies.
+COPY packages/sponsorship/package.json ./packages/sponsorship/
+COPY --from=build /app/packages/sponsorship/dist ./packages/sponsorship/dist
+COPY --from=prod-deps /app/packages/sponsorship/node_modules ./packages/sponsorship/node_modules
 COPY migrations ./migrations
 COPY package.json ./
 USER node

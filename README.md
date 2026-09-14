@@ -39,6 +39,7 @@ export KIPPU_TEST_DATABASE_URL=$KIPPU_DATABASE_URL
 export KIPPU_LOGIN_RP_ID=localhost                     # organiser login passkeys
 export KIPPU_LOGIN_ORIGINS=http://localhost:5173        # Ibento's dev origin
 export KIPPU_HOLDER_RP_ID=holder.kippu.example          # placeholder: holder credentials
+export KIPPU_LEDGER_ENVIRONMENT=development             # backend-memory, software KMS, development sponsor
 pnpm lint        # Biome
 pnpm typecheck
 pnpm test        # Vitest
@@ -177,6 +178,18 @@ Writes Kippu never sees, sent directly by Saifu and Iriguchi, are covered by the
 - **Errors.** `unwrap(result)` turns an SDK result's §10 code into the tRPC error clients read. Any internal error reaches the client as `internal error`, with no message and no stack; the server logs it.
 
 `@ticketto/sdk`, `profile-v0`, `ledger-rules` and `backend-memory` are vendored from the libticketto commit in `vendor/libticketto/source.json` (`pnpm vendor:libticketto <commit>`).
+
+### The development wiring (`T-021-11`)
+
+`pnpm start` serves the domain services — organiser and operator sessions, holder linking, and events, zones, classes and granted issuance — over the ledger `KIPPU_LEDGER_ENVIRONMENT` names. It is required, with no default. `createServer` (`src/wiring.ts`) is the composition `src/server.ts` runs, and the one its test drives.
+
+- **`development`** (and `test`) run everything in the server's own process:
+  - the SDK over `backend-memory`;
+  - a software KMS for organiser keys;
+  - a development sponsor (`src/ledger/development-sponsor.ts`). It signs a real sponsorship for every input at nil notional cost, with a software key, and evaluates no entitlement; `backend-memory` verifies none.
+  - **Ledger state and organiser keys live only in memory.** A restart forgets every event and ticket, while the Kippu store keeps its rows; start from a fresh store after a restart.
+- **`production`** is refused at start-up. It needs `binding-offchain`, a KMS provider for organiser keys, and the sponsor relay's client (`T-023-07`), and none exists yet.
+- `test/server/development-wiring.test.ts` runs the server from its configuration, and drives the whole flow through tRPC: an organiser signs up and signs in, creates an event, uploads seat positions and defines a class; a guest links their holder account; the organiser issues them a granted ticket.
 
 ### Organiser authority (`REQ-OA-1`)
 
