@@ -1,4 +1,5 @@
 import { loadConfig } from "./config.js";
+import { loadMetadataConfig } from "./metadata/config.js";
 import { assertMigrated } from "./store/migrate.js";
 import { createStore } from "./store/store.js";
 import { createServer } from "./wiring.js";
@@ -7,7 +8,15 @@ const config = loadConfig();
 const store = createStore(config.databaseUrl);
 let app: ReturnType<typeof createServer>["app"];
 try {
-  ({ app } = createServer(config, store, { logger: true }));
+  // Metadata editing is mounted when its object storage is configured (F-026).
+  const metadata =
+    process.env.KIPPU_METADATA_S3_BUCKET === undefined ? undefined : loadMetadataConfig();
+  ({ app } = createServer(
+    config,
+    store,
+    { logger: true },
+    metadata === undefined ? {} : { metadata },
+  ));
 } catch (error) {
   console.error(error instanceof Error ? error.message : error);
   await store.end();

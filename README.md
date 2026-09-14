@@ -188,6 +188,7 @@ Writes Kippu never sees, sent directly by Saifu and Iriguchi, are covered by the
   - a software KMS for organiser keys;
   - a development sponsor (`src/ledger/development-sponsor.ts`). It signs a real sponsorship for every input at nil notional cost, with a software key, and evaluates no entitlement; `backend-memory` verifies none.
   - **Ledger state and organiser keys live only in memory.** A restart forgets every event and ticket, while the Kippu store keeps its rows; start from a fresh store after a restart.
+- **Metadata editing** (`F-026`) is mounted when `KIPPU_METADATA_S3_BUCKET` is set, with the rest of the `KIPPU_METADATA_*` keys; otherwise its procedures fail and everything else is served. Event locators name `KIPPU_METADATA_PUBLIC_URL`.
 - **`production`** is refused at start-up. It needs `binding-offchain`, a KMS provider for organiser keys, and the sponsor relay's client (`T-023-07`), and none exists yet.
 - `test/server/development-wiring.test.ts` runs the server from its configuration, and drives the whole flow through tRPC: an organiser signs up and signs in, creates an event, uploads seat positions and defines a class; a guest links their holder account; the organiser issues them a granted ticket.
 

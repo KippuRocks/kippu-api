@@ -9,6 +9,9 @@ import type { Config } from "./config.js";
 import { createEvents } from "./events/service.js";
 import { developmentSponsor } from "./ledger/development-sponsor.js";
 import { type KippuTicketto, makeTicketto } from "./ledger/ticketto.js";
+import type { MetadataConfig } from "./metadata/config.js";
+import { createMetadataDocuments } from "./metadata/documents.js";
+import { createS3MetadataStorage } from "./metadata/storage.js";
 import type { Store } from "./store/store.js";
 
 /**
@@ -25,15 +28,25 @@ export class WiringError extends Error {
   }
 }
 
+export interface WiringOptions {
+  /**
+   * Metadata object storage, for organisers' document editing (`F-026`). Without
+   * it, the metadata editing procedures fail and everything else is served.
+   */
+  readonly metadata?: MetadataConfig;
+}
+
 export interface DomainServices {
-  readonly services: Services;
+  /** Metadata editing is absent without object storage; `buildApp` fills it with a failing service. */
+  readonly services: Pick<Services, "auth" | "events"> & Partial<Pick<Services, "metadata">>;
   readonly ledger: KippuTicketto;
 }
 
 /**
  * The domain services the server mounts, over the ledger its environment names
- * (`T-021-11`): identity and holder linking (`F-020`), and events, zones, classes
- * and granted issuance (`F-021`).
+ * (`T-021-11`): identity and holder linking (`F-020`), events, zones, classes
+ * and granted issuance (`F-021`), and — given object storage — metadata document
+ * editing (`F-026`).
  *
  * In `development` and `test` they run over `backend-memory`, a software KMS for
  * organiser keys, and a development sponsor — all in this process's memory, so
@@ -44,6 +57,7 @@ export interface DomainServices {
 export function createDomainServices(
   config: Pick<Config, "ledgerEnvironment" | "login" | "holderRpId">,
   store: Store,
+  options: WiringOptions = {},
 ): DomainServices {
   const environment = config.ledgerEnvironment;
   if (environment === "production") {
@@ -71,8 +85,27 @@ export function createDomainServices(
     relyingParty: config.login,
     holders: { credentials: ledger, holderRpId: config.holderRpId },
   });
-  const events = createEvents({ store, authority, ledger });
-  return { services: { auth, events }, ledger };
+  const publicUrl = options.metadata?.publicUrl;
+  const events = createEvents({
+    store,
+    authority,
+    ledger,
+    ...(publicUrl === undefined ? {} : { metadataPublicUrl: publicUrl }),
+  });
+  const metadata =
+    options.metadata === undefined
+      ? undefined
+      : createMetadataDocuments({
+          store,
+          storage: createS3MetadataStorage(options.metadata.storage),
+          ledger,
+          authority,
+          publicUrl: options.metadata.publicUrl,
+        });
+  return {
+    services: metadata === undefined ? { auth, events } : { auth, events, metadata },
+    ledger,
+  };
 }
 
 /** The API server's application, with its domain services mounted. */
@@ -80,7 +113,8 @@ export function createServer(
   config: Pick<Config, "ledgerEnvironment" | "login" | "holderRpId">,
   store: Store,
   options: FastifyServerOptions = {},
+  wiring: WiringOptions = {},
 ): { readonly app: FastifyInstance; readonly ledger: KippuTicketto } {
-  const { services, ledger } = createDomainServices(config, store);
+  const { services, ledger } = createDomainServices(config, store, wiring);
   return { app: buildApp(options, undefined, services), ledger };
 }
