@@ -1,3 +1,4 @@
+import type { Events } from "../events/ports.js";
 import type {
   AuthenticationResponseJSON,
   PublicKeyCredentialCreationOptionsJSON,
@@ -193,4 +194,5 @@ export interface Auth {
 /** The services procedures reach through their context. */
 export interface Services {
   readonly auth: Auth;
+  readonly events: Events;
 }

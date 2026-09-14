@@ -158,6 +158,14 @@ Kippu holds and exercises each organiser's authority over their events on the le
 
 `@kippu/sponsorship` is a workspace dependency of the server, so `pnpm build`, `pnpm typecheck` and `pnpm test` build it first (`pnpm build:deps`).
 
+### Events, classes and granted issuance (`F-021`)
+
+The `events` router is the organiser's. Every procedure acts for the signed-in organiser, and Kippu signs any ledger write with their authority. An event's owner is read from the ledger (`REQ-IX-1`): `ERR-EventNotFound` when the ledger has no such event, `ERR-NotOwner` when the organiser does not own it.
+
+- **Classes** (`events.classes.define`, `events.classes.list`) are Kippu data (`REQ-TC-2`), stored in `ticket_classes`: name, description, provenance, attendance policy, restrictions, quota and an opaque random 32-byte id.
+  - A class declared `Purchased` with a restriction is refused at definition with `ERR-RestrictionNotPermitted` (`REQ-TC-3`). The store refuses it too.
+  - `cannotTransfer` implies `cannotResale` (`REQ-TK-2`), so the class records the restrictions its tickets will carry on the ledger.
+
 ### Package releases
 
 Package versions are managed with Changesets (`pnpm changeset`). Nothing is
