@@ -1,9 +1,10 @@
 // Sponsorships: the sponsor's signed undertaking to relay one signed input and
 // bear its cost (REQ-SP-1, AD-18 A; features/023-sponsorship/plan.md §5.2).
 //
-//   Sponsorship     = version u8, input kind u8, bound id [u8;16],
+//   Sponsorship     = version u8, input kind u8, bound id [u8;16], input digest [u8;32],
 //                     notional cost Compact<u128>, authorisation Vec<u8>
-//   Signing payload = "kippu/v0/sponsorship" ‖ version, input kind, bound id, notional cost
+//   Signing payload = "kippu/v0/sponsorship" ‖ version, input kind, bound id, input digest,
+//                     notional cost
 //
 // | input kind | input               | bound id                   |
 // |------------|---------------------|----------------------------|
@@ -12,7 +13,10 @@
 //
 // The input kinds are the profile's signed-input kinds (`SIGNED_INPUT_KIND_INDEX`),
 // so an operation id and a pass id that happen to be equal never share a
-// sponsorship. The authorisation is the profile's `p256` authorisation (C2) over
+// sponsorship. The input digest is the one C3 records for replay: BLAKE2b-256 of
+// the profile's signed-input framing. Binding it as well as the id means a
+// sponsorship for one input cannot be attached to a different input that reuses
+// its id (REQ-SP-3; features/023-sponsorship/plan.md §5.2). The authorisation is the profile's `p256` authorisation (C2) over
 // the signing payload, by a configured sponsor account. The notional cost is in
 // the unit of the notional cost table (§5.5); it is nil under the MVP backend,
 // and carried anyway so that the path is exercised and metered (REQ-SP-1b).
@@ -22,8 +26,11 @@
 import { p256 } from "@noble/curves/nist.js";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import {
+  blake2b256,
   DecodeError,
   decodeAuthorisation,
+  encodeSignedAccessPass,
+  encodeSignedCommand,
   p256AccountId,
   p256AuthorisationDigest,
   SIGNED_INPUT_KIND_INDEX,
@@ -50,15 +57,21 @@ export const SPONSORSHIP_SIGNING_TAG: Uint8Array = new TextEncoder().encode("kip
 /** Bytes in an operation id or a pass id. */
 export const BOUND_ID_LENGTH = 16;
 
+/** Bytes in a signed input's digest. */
+export const INPUT_DIGEST_LENGTH = 32;
+
 const MAX_NOTIONAL_COST = (1n << 128n) - 1n;
 
 /** What a sponsor relays: a signed command or a signed access pass (`Sponsor.sponsor`). */
 export type SponsoredInput = SignedCommand | SignedAccessPass;
 
-/** The input a sponsorship is bound to: a command's operation id, or a pass's id. */
+/**
+ * The input a sponsorship is bound to: a command's operation id, or a pass's id,
+ * and the digest of the signed input itself (`signedInputDigest`).
+ */
 export type SponsorshipTarget =
-  | { readonly kind: "command"; readonly operationId: OperationId }
-  | { readonly kind: "accessPass"; readonly passId: PassId };
+  | { readonly kind: "command"; readonly operationId: OperationId; readonly digest: Uint8Array }
+  | { readonly kind: "accessPass"; readonly passId: PassId; readonly digest: Uint8Array };
 
 /** A sponsorship's contents. */
 export interface SponsorshipValue {
@@ -73,23 +86,40 @@ interface Frame {
   version: number;
   kind: number;
   id: Uint8Array;
+  digest: Uint8Array;
   cost: number | bigint;
 }
 
-const unsignedCodec = Struct({ version: u8, kind: u8, id: Bytes(BOUND_ID_LENGTH), cost: compact });
+const unsignedCodec = Struct({
+  version: u8,
+  kind: u8,
+  id: Bytes(BOUND_ID_LENGTH),
+  digest: Bytes(INPUT_DIGEST_LENGTH),
+  cost: compact,
+});
 const sponsorshipCodec = Struct({
   version: u8,
   kind: u8,
   id: Bytes(BOUND_ID_LENGTH),
+  digest: Bytes(INPUT_DIGEST_LENGTH),
   cost: compact,
   authorisation: Bytes(),
 });
 
-/** The operation id or pass id `input` carries. */
+/**
+ * The digest of a signed input, as `C3` records it for replay: BLAKE2b-256 of the
+ * profile's signed-input framing.
+ */
+export function signedInputDigest(input: SponsoredInput): Uint8Array {
+  return blake2b256("pass" in input ? encodeSignedAccessPass(input) : encodeSignedCommand(input));
+}
+
+/** The operation id or pass id `input` carries, and its digest. */
 export function sponsorshipTarget(input: SponsoredInput): SponsorshipTarget {
+  const digest = signedInputDigest(input);
   return "pass" in input
-    ? { kind: "accessPass", passId: input.pass.id }
-    : { kind: "command", operationId: input.command.operationId };
+    ? { kind: "accessPass", passId: input.pass.id, digest }
+    : { kind: "command", operationId: input.command.operationId, digest };
 }
 
 function frameOf(target: SponsorshipTarget, notionalCost: bigint): Frame {
@@ -101,7 +131,16 @@ function frameOf(target: SponsorshipTarget, notionalCost: bigint): Frame {
       ? [SIGNED_INPUT_KIND_INDEX.command, target.operationId]
       : [SIGNED_INPUT_KIND_INDEX.accessPass, target.passId];
   const id = boundId(hex);
-  return { version: SPONSORSHIP_FORMAT_VERSION, kind, id, cost: notionalCost };
+  if (!(target.digest instanceof Uint8Array) || target.digest.length !== INPUT_DIGEST_LENGTH) {
+    throw new TypeError(`expected a ${INPUT_DIGEST_LENGTH}-byte input digest`);
+  }
+  return {
+    version: SPONSORSHIP_FORMAT_VERSION,
+    kind,
+    id,
+    digest: target.digest,
+    cost: notionalCost,
+  };
 }
 
 function boundId(hex: string): Uint8Array {
@@ -153,9 +192,9 @@ export function decodeSponsorship(bytes: Uint8Array): SponsorshipValue {
     const hex = bytesToHex(frame.id);
     let target: SponsorshipTarget;
     if (frame.kind === SIGNED_INPUT_KIND_INDEX.command) {
-      target = { kind: "command", operationId: hex as OperationId };
+      target = { kind: "command", operationId: hex as OperationId, digest: frame.digest };
     } else if (frame.kind === SIGNED_INPUT_KIND_INDEX.accessPass) {
-      target = { kind: "accessPass", passId: hex as PassId };
+      target = { kind: "accessPass", passId: hex as PassId, digest: frame.digest };
     } else {
       throw new DecodeError(`unknown sponsored input kind ${frame.kind}`);
     }
@@ -218,7 +257,7 @@ function refused(detail: string): Result<never> {
   return { ok: false, error: { code: "ERR-SponsorshipRefused", detail } };
 }
 
-function sameTarget(a: SponsorshipTarget, b: SponsorshipTarget): boolean {
+function sameId(a: SponsorshipTarget, b: SponsorshipTarget): boolean {
   if (a.kind === "command" && b.kind === "command") return a.operationId === b.operationId;
   if (a.kind === "accessPass" && b.kind === "accessPass") return a.passId === b.passId;
   return false;
@@ -226,7 +265,8 @@ function sameTarget(a: SponsorshipTarget, b: SponsorshipTarget): boolean {
 
 /**
  * Whether `sponsorship` is a valid sponsorship of `input`: canonically encoded,
- * bound to `input`'s operation id — for a pass, its pass id — and signed with
+ * bound to `input`'s operation id — for a pass, its pass id — and to its
+ * digest, and signed with
  * a `p256` authorisation by one of `options.sponsors`. Anything else fails with
  * `ERR-SponsorshipRefused`, as the hosted ledger service refuses it before any
  * rule runs (`F-010` §5.3).
@@ -242,8 +282,12 @@ export function verifySponsorship(
   } catch (error) {
     return refused(`malformed sponsorship: ${String(error)}`);
   }
-  if (!sameTarget(value.target, sponsorshipTarget(input))) {
-    return refused("the sponsorship is bound to another input");
+  const target = sponsorshipTarget(input);
+  if (!sameId(value.target, target)) {
+    return refused("the sponsorship is bound to another operation id or pass id");
+  }
+  if (!equalBytes(value.target.digest, target.digest)) {
+    return refused("the sponsorship is bound to another input with the same id");
   }
   let signed: ReturnType<typeof decodeAuthorisation>;
   try {

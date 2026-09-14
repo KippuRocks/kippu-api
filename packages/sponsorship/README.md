@@ -12,9 +12,10 @@ Nothing is published to a registry. Consumers in other repositories install a
 ## Format
 
 ```
-Sponsorship     = version u8, input kind u8, bound id [u8;16],
+Sponsorship     = version u8, input kind u8, bound id [u8;16], input digest [u8;32],
                   notional cost Compact<u128>, authorisation Vec<u8>
-Signing payload = "kippu/v0/sponsorship" ‖ version, input kind, bound id, notional cost
+Signing payload = "kippu/v0/sponsorship" ‖ version, input kind, bound id, input digest,
+                  notional cost
 ```
 
 | Field | Value |
@@ -22,6 +23,7 @@ Signing payload = "kippu/v0/sponsorship" ‖ version, input kind, bound id, noti
 | version | `0` |
 | input kind | The profile's signed-input kind: `0` command, `1` access pass |
 | bound id | A command's operation id; a pass's pass id (a pass's operation id is its pass id, `AD-15`) |
+| input digest | BLAKE2b-256 of the profile's signed-input framing: the digest `C3` records for replay. It stops a sponsorship for one input being attached to a different input that reuses its id (`REQ-SP-3`) |
 | notional cost | In the unit of the notional cost table (`F-023` §5.5). Nil under the MVP backend (`REQ-SP-1b`) |
 | authorisation | The V0 profile's `p256` authorisation over the signing payload (`C2`) |
 
@@ -41,9 +43,10 @@ const result = verifySponsorship(sponsorship, signedInput, { sponsors: [sponsor.
 ```
 
 `verifySponsorship` refuses, with `ERR-SponsorshipRefused`, bytes that are not a
-sponsorship, a sponsorship bound to another operation id or pass id, one whose
-authorisation is not `p256`, one signed by an account that is not configured,
-and one whose signature does not verify.
+sponsorship, a sponsorship bound to another operation id or pass id, one bound to
+a different input reusing the same id, one whose authorisation is not `p256`, one
+signed by an account that is not configured, and one whose signature does not
+verify.
 
 ## The sponsor's key
 
