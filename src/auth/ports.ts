@@ -6,13 +6,25 @@ import type {
 } from "./webauthn-json.js";
 
 /**
- * Who a request acts as (`F-020` plan §5.1). Holders join in `T-020-06` and the
- * anonymous principal in `T-020-09`.
+ * Who a request acts as (`F-020` plan §5.1). Holders join in `T-020-06`.
  *
  * This module is imported by the tRPC context, whose type is published in
  * `@kippu/api`: it may import only modules that import nothing at runtime.
  */
-export type Principal = OrganiserPrincipal | OperatorPrincipal;
+export type Principal = AnonymousPrincipal | SessionPrincipal;
+
+/** A principal that signed in, and so holds a session. */
+export type SessionPrincipal = OrganiserPrincipal | OperatorPrincipal;
+
+/**
+ * Whoever calls with no session: a visitor browsing with no account, no keys
+ * and no wallet (`REQ-MP-7`). It reaches public procedures only.
+ */
+export interface AnonymousPrincipal {
+  readonly kind: "anonymous";
+}
+
+export const ANONYMOUS: AnonymousPrincipal = Object.freeze({ kind: "anonymous" });
 
 export interface OrganiserPrincipal {
   readonly kind: "organiser";
@@ -71,7 +83,7 @@ export interface OperatorSession {
 
 /** What a principal learns about its own session. */
 export interface SessionInfo {
-  readonly principal: Principal;
+  readonly principal: SessionPrincipal;
   /** ISO 8601. */
   readonly expiresAt: string;
 }

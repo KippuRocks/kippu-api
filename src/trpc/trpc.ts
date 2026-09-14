@@ -8,21 +8,48 @@ export interface KippuErrorData {
   readonly errorCode: string | null;
 }
 
-const t = initTRPC.context<Context>().create({
-  errorFormatter({ shape, error }) {
-    const data: KippuErrorData = {
-      errorCode: error.cause instanceof SpecErrorCause ? error.cause.specCode : null,
-    };
-    return { ...shape, data: { ...shape.data, ...data } };
-  },
-});
+/**
+ * Who may call a procedure. `public` procedures are open to the anonymous
+ * principal (`REQ-MP-7`); every other procedure — including one that declares
+ * nothing — refuses it.
+ */
+export interface ProcedureMeta {
+  readonly access?: "public" | "signed-in" | undefined;
+}
+
+const t = initTRPC
+  .context<Context>()
+  .meta<ProcedureMeta>()
+  .create({
+    errorFormatter({ shape, error }) {
+      const data: KippuErrorData = {
+        errorCode: error.cause instanceof SpecErrorCause ? error.cause.specCode : null,
+      };
+      return { ...shape, data: { ...shape.data, ...data } };
+    },
+  });
 
 export const router = t.router;
 export const mergeRouters = t.mergeRouters;
-export const publicProcedure = t.procedure;
+export const createCallerFactory = t.createCallerFactory;
+
+/**
+ * The base of every exported builder. The anonymous principal reaches a
+ * procedure only when the procedure is declared public, so a procedure that
+ * forgets to say is closed, not open.
+ */
+const guarded = t.procedure.use(({ ctx, meta, next }) => {
+  if (ctx.principal.kind === "anonymous" && meta?.access !== "public") {
+    throw new TRPCError({ code: "UNAUTHORIZED", message: "sign in first" });
+  }
+  return next();
+});
+
+/** A procedure anyone may call, with or without a session (`REQ-MP-7`). */
+export const publicProcedure = guarded.meta({ access: "public" });
 
 /** A procedure any signed-in principal may call. */
-export const authenticatedProcedure = t.procedure.use(({ ctx, next }) => {
+export const authenticatedProcedure = guarded.meta({ access: "signed-in" }).use(({ ctx, next }) => {
   if (ctx.session === null) {
     throw new TRPCError({ code: "UNAUTHORIZED", message: "sign in first" });
   }
