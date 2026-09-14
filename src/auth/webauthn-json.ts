@@ -65,7 +65,11 @@ export interface RegistrationResponseJSON {
     publicKey?: Base64URLString;
   };
   authenticatorAttachment?: "cross-platform" | "platform";
-  clientExtensionResults: Record<string, unknown>;
+  /**
+   * Extension outputs. Typed loosely, so that browser helpers' own interfaces —
+   * which declare known extensions and no index signature — are accepted.
+   */
+  clientExtensionResults: object;
 }
 
 /** The result of `navigator.credentials.get`, as JSON. */
@@ -80,5 +84,9 @@ export interface AuthenticationResponseJSON {
     userHandle?: Base64URLString;
   };
   authenticatorAttachment?: "cross-platform" | "platform";
-  clientExtensionResults: Record<string, unknown>;
+  /**
+   * Extension outputs. Typed loosely, so that browser helpers' own interfaces —
+   * which declare known extensions and no index signature — are accepted.
+   */
+  clientExtensionResults: object;
 }

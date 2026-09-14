@@ -52,3 +52,53 @@ export async function rejectedByTheCompiler(api: Api): Promise<void> {
   // @ts-expect-error — an operator redeems a code, not an email.
   await api.auth.operator.redeemEnrolmentCode.mutate({ email: "a@b.c" });
 }
+
+/**
+ * The shape `@simplewebauthn/browser`'s `startAuthentication` and
+ * `startRegistration` return: extension outputs are an interface of known
+ * extensions, with no index signature. Ibento passes them straight through.
+ */
+interface BrowserExtensionOutputs {
+  appid?: boolean;
+  credProps?: { rk?: boolean };
+  hmacCreateSecret?: boolean;
+}
+interface BrowserAuthenticationResponse {
+  id: string;
+  rawId: string;
+  type: "public-key";
+  response: {
+    clientDataJSON: string;
+    authenticatorData: string;
+    signature: string;
+    userHandle?: string;
+  };
+  authenticatorAttachment?: "cross-platform" | "platform";
+  clientExtensionResults: BrowserExtensionOutputs;
+}
+interface BrowserRegistrationResponse {
+  id: string;
+  rawId: string;
+  type: "public-key";
+  response: {
+    clientDataJSON: string;
+    attestationObject: string;
+    authenticatorData?: string;
+    transports?: ("ble" | "cable" | "hybrid" | "internal" | "nfc" | "smart-card" | "usb")[];
+    publicKeyAlgorithm?: number;
+    publicKey?: string;
+  };
+  authenticatorAttachment?: "cross-platform" | "platform";
+  clientExtensionResults: BrowserExtensionOutputs;
+}
+type Attestation = Parameters<
+  Api["auth"]["organiser"]["completeSignUp"]["mutate"]
+>[0]["credential"];
+
+/** Never called: a browser helper's responses are accepted as they come. */
+export function acceptsBrowserResponses(
+  assertion: BrowserAuthenticationResponse,
+  attestation: BrowserRegistrationResponse,
+): [Assertion, Attestation] {
+  return [assertion, attestation];
+}
