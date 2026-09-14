@@ -8,6 +8,12 @@ on:
 permissions:
   contents: read
 
+env:
+  # RELEASE.2025-09-07T16-13-09Z, by digest (the multi-architecture index).
+  MINIO_IMAGE_DIGEST: sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
+  MINIO_IMAGE: quay.io/minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
+  MINIO_LOCAL_TAG: kippu-ci/minio:pinned
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -50,11 +56,34 @@ jobs:
           node-version: 24
           cache: pnpm
       # A service container cannot be given MinIO's `server` command, so it is started here.
+      # MinIO withdrew its Docker Hub images, so the image comes from quay.io, pinned by
+      # digest. It is kept in the Actions cache, and quay.io is reached only on a cache miss,
+      # with retries, so a registry outage does not block CI.
+      - name: Restore the MinIO image from the cache
+        id: minio-image
+        uses: actions/cache@v6
+        with:
+          path: /tmp/minio-image.tar
+          key: minio-image-${{ env.MINIO_IMAGE_DIGEST }}
+      - name: Pull the MinIO image on a cache miss
+        if: steps.minio-image.outputs.cache-hit != 'true'
+        run: |
+          for attempt in 1 2 3 4 5; do
+            if docker pull "$MINIO_IMAGE"; then break; fi
+            if [ "$attempt" = 5 ]; then echo "quay.io did not serve $MINIO_IMAGE" >&2; exit 1; fi
+            sleep $((attempt * 15))
+          done
+          # `docker load` does not restore a repository digest, so the cached image is tagged.
+          docker tag "$MINIO_IMAGE" "$MINIO_LOCAL_TAG"
+          docker save "$MINIO_LOCAL_TAG" -o /tmp/minio-image.tar
       - name: Start the metadata object storage stand-in (MinIO)
         run: |
+          if ! docker image inspect "$MINIO_LOCAL_TAG" >/dev/null 2>&1; then
+            docker load -i /tmp/minio-image.tar
+          fi
           docker run -d --name kippu-metadata-storage -p 9000:9000 \
             -e MINIO_ROOT_USER=kippu_metadata -e MINIO_ROOT_PASSWORD=kippu_metadata_ci \
-            quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z server /data
+            "$MINIO_LOCAL_TAG" server /data
           for _ in $(seq 1 30); do
             if curl -fsS http://127.0.0.1:9000/minio/health/live; then exit 0; fi
             sleep 1
