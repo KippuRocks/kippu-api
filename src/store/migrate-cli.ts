@@ -1,8 +1,8 @@
-import { loadConfig } from "../config.js";
+import { loadStoreConfig } from "../config.js";
 import { migrate } from "./migrate.js";
 import { createStore } from "./store.js";
 
-const config = loadConfig();
+const config = loadStoreConfig();
 const store = createStore(config.databaseUrl);
 try {
   const applied = await migrate(store);

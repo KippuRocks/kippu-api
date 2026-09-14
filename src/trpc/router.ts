@@ -1,3 +1,4 @@
+import { authRouter } from "../auth/router.js";
 import { publicProcedure, router } from "./trpc.js";
 
 /**
@@ -13,6 +14,7 @@ const systemRouter = router({
  */
 export const appRouter = router({
   system: systemRouter,
+  auth: authRouter,
 });
 
 export type AppRouter = typeof appRouter;

@@ -36,6 +36,9 @@ pnpm install
 pnpm store:up    # the Kippu store: PostgreSQL 18 in Docker, on 127.0.0.1:54329
 export KIPPU_DATABASE_URL=postgres://kippu_api:kippu_api_local@127.0.0.1:54329/kippu_api
 export KIPPU_TEST_DATABASE_URL=$KIPPU_DATABASE_URL
+export KIPPU_LOGIN_RP_ID=localhost                     # organiser login passkeys
+export KIPPU_LOGIN_ORIGINS=http://localhost:5173        # Ibento's dev origin
+export KIPPU_HOLDER_RP_ID=holder.kippu.example          # placeholder: holder credentials
 pnpm lint        # Biome
 pnpm typecheck
 pnpm test        # Vitest
@@ -67,6 +70,22 @@ here is authoritative for a Ticketto fact (`REQ-IX-1`).
 - Store tests create a database of their own per file on
   `KIPPU_TEST_DATABASE_URL`. Without it they are skipped locally; in CI they
   may not be.
+
+### Organiser and operator sessions
+
+- **Organisers** sign up with an email and one passkey, then sign in with that passkey.
+  - The email is an identifier only and is not verified in V0.
+  - Each step is an explicit WebAuthn exchange in `auth.organiser`: `begin*` returns a challenge, and `complete*` takes the credential and returns a session.
+  - Passkeys are bound to `KIPPU_LOGIN_RP_ID` and must be user-verified.
+  - The server refuses to start when `KIPPU_LOGIN_RP_ID` equals `KIPPU_HOLDER_RP_ID`, the holder credential's RP id. A login passkey therefore never shares a picker with a holder credential, and can never authorise a ledger operation.
+- **Operators** redeem a one-time enrolment code for a session with `auth.operator.redeemEnrolmentCode`. Their organiser issues the code (`F-024`). The ledger never learns who an operator is (`REQ-OP-1`).
+- **Sessions** are opaque random bearer tokens.
+  - Only a SHA-256 of each token is stored.
+  - Tokens are sent as `Authorization: Bearer <token>`.
+  - They last 12 hours for organisers and 24 hours for operators, and end earlier on `auth.session.signOut` or revocation.
+  - Procedures that need a principal use `organiserProcedure`, `operatorProcedure` or `authenticatedProcedure` (`src/trpc/trpc.ts`).
+
+The hostnames are not chosen yet: every RP id and origin in this repository is a placeholder.
 
 ### Package releases
 

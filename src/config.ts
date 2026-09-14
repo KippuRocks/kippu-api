@@ -11,6 +11,13 @@ export interface Config {
   readonly port: number;
   /** The Kippu store: a PostgreSQL connection URL, credentials included. */
   readonly databaseUrl: string;
+  /**
+   * Kippu's login relying party, for organiser passkeys. Its RP id is never
+   * the holder credential's (`F-020` plan §8).
+   */
+  readonly login: { readonly id: string; readonly origins: readonly string[] };
+  /** The WebAuthn RP id holder credentials are bound to — a profile parameter (`F-003` §5.3). */
+  readonly holderRpId: string;
 }
 
 export type Environment = Readonly<Record<string, string | undefined>>;
@@ -65,6 +72,49 @@ function readDatabaseUrl(value: string | undefined): string {
   return value;
 }
 
+/** A WebAuthn RP id: a bare, lower-case domain name, with no scheme, port or path. */
+const RP_ID =
+  /^(?=.{1,253}$)[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$/;
+
+function readRpId(key: string, value: string | undefined): string {
+  if (value === undefined || value === "") {
+    throw new ConfigError(`${key} is required`);
+  }
+  if (!RP_ID.test(value)) {
+    throw new ConfigError(`${key} must be a bare lower-case domain name, got "${value}"`);
+  }
+  return value;
+}
+
+/**
+ * The origins a login ceremony may come from. Each must be served from the RP
+ * id or a subdomain of it, over HTTPS unless it is `localhost`.
+ */
+function readOrigins(key: string, value: string | undefined, rpId: string): readonly string[] {
+  if (value === undefined || value.trim() === "") {
+    throw new ConfigError(`${key} is required: a comma-separated list of origins`);
+  }
+  return value.split(",").map((entry) => {
+    let url: URL;
+    try {
+      url = new URL(entry.trim());
+    } catch {
+      throw new ConfigError(`${key}: "${entry}" is not an origin`);
+    }
+    if (url.origin !== entry.trim()) {
+      throw new ConfigError(`${key}: "${entry}" is not an origin (no path, no trailing slash)`);
+    }
+    const local = url.hostname === "localhost";
+    if (url.protocol !== "https:" && !(local && url.protocol === "http:")) {
+      throw new ConfigError(`${key}: "${entry}" must use https`);
+    }
+    if (url.hostname !== rpId && !url.hostname.endsWith(`.${rpId}`)) {
+      throw new ConfigError(`${key}: "${entry}" is not served from ${rpId} or a subdomain of it`);
+    }
+    return url.origin;
+  });
+}
+
 /** Refuses an environment carrying a route to any store but Kippu's own. */
 export function assertNoForeignStoreCredentials(env: Environment): void {
   const refused = Object.keys(env)
@@ -80,11 +130,30 @@ export function assertNoForeignStoreCredentials(env: Environment): void {
   }
 }
 
+/** Only what reaching the Kippu store needs, for tools such as the migration runner. */
+export function loadStoreConfig(env: Environment = process.env): Pick<Config, "databaseUrl"> {
+  assertNoForeignStoreCredentials(env);
+  return { databaseUrl: readDatabaseUrl(env.KIPPU_DATABASE_URL) };
+}
+
 export function loadConfig(env: Environment = process.env): Config {
   assertNoForeignStoreCredentials(env);
+  const loginRpId = readRpId("KIPPU_LOGIN_RP_ID", env.KIPPU_LOGIN_RP_ID);
+  const holderRpId = readRpId("KIPPU_HOLDER_RP_ID", env.KIPPU_HOLDER_RP_ID);
+  if (loginRpId === holderRpId) {
+    throw new ConfigError(
+      "KIPPU_LOGIN_RP_ID must differ from KIPPU_HOLDER_RP_ID: an organiser login passkey must " +
+        "never be bound to the holder credential's RP id",
+    );
+  }
   return {
     host: env.HOST === undefined || env.HOST === "" ? DEFAULT_HOST : env.HOST,
     port: readPort(env.PORT),
     databaseUrl: readDatabaseUrl(env.KIPPU_DATABASE_URL),
+    login: {
+      id: loginRpId,
+      origins: readOrigins("KIPPU_LOGIN_ORIGINS", env.KIPPU_LOGIN_ORIGINS, loginRpId),
+    },
+    holderRpId,
   };
 }
