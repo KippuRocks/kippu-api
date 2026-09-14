@@ -1,23 +1,16 @@
 import { buildApp } from "./app.js";
+import { loadConfig } from "./config.js";
+import { assertMigrated } from "./store/migrate.js";
+import { createStore } from "./store/store.js";
 
-const DEFAULT_PORT = 8080;
-
-function readPort(value: string | undefined): number {
-  if (value === undefined || value === "") {
-    return DEFAULT_PORT;
-  }
-  const port = Number(value);
-  if (!Number.isInteger(port) || port < 0 || port > 65535) {
-    throw new Error(`PORT must be an integer between 0 and 65535, got "${value}"`);
-  }
-  return port;
-}
-
+const config = loadConfig();
+const store = createStore(config.databaseUrl);
 const app = buildApp({ logger: true });
 
 const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
   app.log.info({ signal }, "shutting down");
   await app.close();
+  await store.end();
   process.exit(0);
 };
 
@@ -25,11 +18,10 @@ process.once("SIGINT", shutdown);
 process.once("SIGTERM", shutdown);
 
 try {
-  await app.listen({
-    host: process.env.HOST ?? "0.0.0.0",
-    port: readPort(process.env.PORT),
-  });
+  await assertMigrated(store);
+  await app.listen({ host: config.host, port: config.port });
 } catch (error) {
   app.log.error(error);
+  await store.end();
   process.exit(1);
 }

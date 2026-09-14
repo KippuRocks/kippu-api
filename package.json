@@ -18,17 +18,21 @@
     "lint:personal-data": "pnpm --filter @kippu/metadata-schema lint:personal-data",
     "check:contract": "scripts/check-api-contract.sh",
     "changeset": "changeset",
-    "start": "node dist/server.js"
+    "start": "node dist/server.js",
+    "migrate": "node dist/store/migrate-cli.js",
+    "store:up": "docker compose up -d --wait"
   },
   "dependencies": {
     "@trpc/server": "11.18.0",
-    "fastify": "5.12.4"
+    "fastify": "5.12.4",
+    "pg": "8.23.0"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.13",
     "@changesets/cli": "3.0.2",
     "@trpc/client": "11.18.0",
     "@types/node": "24.13.4",
+    "@types/pg": "8.23.1",
     "typescript": "7.0.2",
     "vitest": "5.0.0"
   }

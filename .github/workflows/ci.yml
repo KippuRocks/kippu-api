@@ -16,6 +16,24 @@ jobs:
   check:
     name: Lint, typecheck, test, build (Node 24)
     runs-on: ubuntu-latest
+    services:
+      kippu-store:
+        # The Kippu store's own instance and credentials (AD-20, REQ-SDK-9).
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: kippu_api
+          POSTGRES_PASSWORD: kippu_api_ci
+          POSTGRES_DB: kippu_api
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U kippu_api -d kippu_api"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+    env:
+      KIPPU_DATABASE_URL: postgres://kippu_api:kippu_api_ci@127.0.0.1:5432/kippu_api
+      KIPPU_TEST_DATABASE_URL: postgres://kippu_api:kippu_api_ci@127.0.0.1:5432/kippu_api
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -28,6 +46,10 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
+      - name: Migrations run against the Kippu store, and a second run applies nothing
+        run: |
+          pnpm migrate
+          pnpm migrate | grep -Fx "the store is up to date"
       - name: No metadata schema declares a personal-data field
         run: pnpm lint:personal-data
       - name: A deny-listed field fails the personal-data lint
@@ -62,6 +84,23 @@ jobs:
   image:
     name: Container image (built, never pushed)
     runs-on: ubuntu-latest
+    services:
+      kippu-store:
+        # The Kippu store's own instance and credentials (AD-20, REQ-SDK-9).
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: kippu_api
+          POSTGRES_PASSWORD: kippu_api_ci
+          POSTGRES_DB: kippu_api
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U kippu_api -d kippu_api"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+    env:
+      KIPPU_DATABASE_URL: postgres://kippu_api:kippu_api_ci@127.0.0.1:5432/kippu_api
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
@@ -75,7 +114,8 @@ jobs:
           cache-to: type=gha,mode=max
       - name: Health endpoint answers from the container
         run: |
-          docker run -d --name kippu-api -p 8080:8080 kippu-api:ci
+          docker run --rm --network host -e KIPPU_DATABASE_URL kippu-api:ci node dist/store/migrate-cli.js
+          docker run -d --name kippu-api --network host -e KIPPU_DATABASE_URL kippu-api:ci
           for _ in $(seq 1 30); do
             if curl -fsS http://127.0.0.1:8080/health; then exit 0; fi
             sleep 1
