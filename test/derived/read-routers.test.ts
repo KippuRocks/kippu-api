@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { classLocator, eventLocator } from "@kippu/metadata-schema";
-import type { EventId, TicketId } from "@ticketto/sdk";
+import type { AccountId, ClassId, Discriminator, EventId, TicketId, ZoneId } from "@ticketto/sdk";
 import type { TRPCError } from "@trpc/server";
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import { ANONYMOUS, type Principal, type Services } from "../../src/auth/ports.js";
@@ -230,8 +230,9 @@ describeWithStore("read routers for Saifu, Ibento and Ichiba", () => {
     expect(read.holdings[0]).toEqual({
       ticket: {
         ...onLedger.value,
-        classMetadataLocator: classLocator(press.id),
         // AC-B2.6: a press pass is legible as one through Kippu.
+        kippuClass: { name: "Press" },
+        classMetadataLocator: classLocator(press.id),
         classMetadata: pressDocument,
         sequence: expect.any(Number),
         authoritative: false,
@@ -239,6 +240,65 @@ describeWithStore("read routers for Saifu, Ibento and Ichiba", () => {
       event: expect.objectContaining({ id: event, metadata: eventDocument(event) }),
     });
     expect(read.freshness.records).toBeGreaterThanOrEqual(waited.freshness.records);
+  });
+
+  it("AC-B2.6: a press pass is legible as one through Kippu before any class document is written", async () => {
+    const organiser = await harness.organiser();
+    const { event, zone } = await createEvent(organiser);
+    const press = await organiser.client.events.classes.define.mutate({
+      event,
+      name: "Press",
+      description: null,
+      provenance: "Granted",
+      policy: { kind: "Single" },
+      restrictions: { cannotResale: true, cannotTransfer: true },
+      quota: null,
+    });
+    const account = randomBytes(32).toString("hex");
+    await organiser.client.events.tickets.issueGranted.mutate({
+      event,
+      class: press.id,
+      zone,
+      placement: { kind: "Unseated" },
+      holder: account,
+    });
+
+    // A ticket of the same event, issued straight through the SDK under a class Kippu never defined.
+    const undefinedClass = randomBytes(32).toString("hex") as ClassId;
+    const direct = await harness.authority.relay(
+      organiser.organiserId,
+      organiser.request,
+      (signer) =>
+        harness.ledger.issueTicket(signer, {
+          event: event as EventId,
+          zone: zone as ZoneId,
+          placement: {
+            kind: "Unseated",
+            discriminator: randomBytes(16).toString("hex") as Discriminator,
+          },
+          class: undefinedClass,
+          provenance: "Granted",
+          policy: { kind: "Single" },
+          restrictions: { cannotResale: false, cannotTransfer: false },
+          holder: account as AccountId,
+          metadata: null,
+        }),
+    );
+    expect(await direct.submission).toMatchObject({ ok: true });
+    await reader.catchUp();
+
+    const { holdings } = await as({
+      kind: "holder",
+      account,
+      sessionId: "test",
+    }).derived.holdings.mine();
+    const byClass = new Map(holdings.map(({ ticket }) => [ticket.class, ticket]));
+    expect(byClass.get(press.id)).toMatchObject({
+      kippuClass: { name: "Press" },
+      classMetadata: null,
+      restrictions: { cannotResale: true, cannotTransfer: true },
+    });
+    expect(byClass.get(undefinedClass)).toMatchObject({ kippuClass: null, classMetadata: null });
   });
 
   it("each read is open only to whom it serves", async () => {

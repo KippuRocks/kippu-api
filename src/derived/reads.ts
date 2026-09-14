@@ -52,7 +52,9 @@ const freshnessOf = (copy: CopyFreshness): ReadFreshness => ({
 /**
  * The read routers' services (`F-025` plan §2): ledger facts from the derived
  * copy, never the ledger (`NFR-11`), each joined with the public document its
- * metadata locator names (`AC-A3.2`).
+ * metadata locator names (`AC-A3.2`). A ticket is also joined with Kippu's own
+ * definition of its class, so the class is legible through Kippu before any
+ * document is written (`AC-B2.6`, `F-025` plan §7a).
  *
  * A document is read from Kippu's own metadata storage, and only for a locator
  * under Kippu's metadata origin: a locator elsewhere is returned, never fetched.
@@ -94,10 +96,21 @@ export function createReads(options: ReadsOptions): Reads {
     authoritative: false,
   });
 
+  /** Kippu's own definition of a ticket's class: defined for the ticket's event, by that id. */
+  const kippuClass = async (ticket: Ticket): Promise<{ readonly name: string } | null> => {
+    const found = await store.query<{ name: string }>(
+      "SELECT name FROM ticket_classes WHERE id = $1 AND event = $2",
+      [ticket.class, ticket.event],
+    );
+    const row = found.rows[0];
+    return row === undefined ? null : { name: row.name };
+  };
+
   const ticketView = async (ticket: Projected<Ticket>): Promise<TicketView> => {
     const locator = classLocator(ticket.value.class, origin);
     return {
       ...ticket.value,
+      kippuClass: await kippuClass(ticket.value),
       classMetadataLocator: locator,
       classMetadata: await document(locator),
       sequence: ticket.sequence,
