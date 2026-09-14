@@ -38,6 +38,21 @@ export async function uploadSeatMap(
   return uploaded.positions;
 }
 
+/** How Ibento issues a guest a seat from a granted class (`T-021-05`). */
+export async function issueGuestSeat(
+  token: string,
+  input: { event: string; class: string; zone: string; position: string; holder: string },
+): Promise<string> {
+  const { ticket } = await organiserClient(token).events.tickets.issueGranted.mutate({
+    event: input.event,
+    class: input.class,
+    zone: input.zone,
+    placement: { kind: "Seated", position: input.position },
+    holder: input.holder,
+  });
+  return ticket;
+}
+
 /** How Ibento defines a guest class (`T-021-04`): the router types the class it returns. */
 export async function definePressClass(token: string, event: string): Promise<string> {
   const defined = await organiserClient(token).events.classes.define.mutate({

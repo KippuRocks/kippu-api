@@ -110,6 +110,29 @@ export interface DefineClassInput extends EventInput {
   readonly quota: number | null;
 }
 
+/** Where a granted ticket is placed in its zone (§5.5). */
+export type PlacementInput =
+  /** A seat: one of the zone's canonical positions, matched exactly (`REQ-ID-3`). */
+  | { readonly kind: "Seated"; readonly position: string }
+  /** General admission: Kippu chooses a random 128-bit discriminator (`AD-12`). */
+  | { readonly kind: "Unseated" };
+
+/** A granted ticket to issue from a class (`US-B2`, `REQ-TC-4`). */
+export interface IssueGrantedInput extends EventInput {
+  /** The `ClassId` of a `Granted` class defined for the event. */
+  readonly class: string;
+  readonly zone: string;
+  readonly placement: PlacementInput;
+  /** The holder's `AccountId`, 64 lower-case hex characters (`INV-2`). */
+  readonly holder: string;
+}
+
+/** A granted ticket the ledger recorded. */
+export interface IssuedTicket extends Recorded {
+  /** The `TicketId`, derived from event, zone and placement (`REQ-ID-1`). */
+  readonly ticket: string;
+}
+
 /** A defined ticket class. */
 export interface TicketClass {
   /** The opaque `ClassId` tickets carry: 32 random bytes, lower-case hex (`REQ-TC-2`). */
@@ -157,6 +180,18 @@ export interface Events {
   ): Promise<SeatPositions>;
   /** A seated zone's canonical positions. */
   seatPositions(organiserId: string, input: ZoneInput): Promise<SeatPositions>;
+  /**
+   * Issues a ticket from a granted class, free, with no payment record of any
+   * kind (`REQ-TC-4`). It carries the class's id, policy and restrictions
+   * (`REQ-TK-4`), and counts against the class quota (`REQ-TC-5`) and the
+   * event's capacity. Refused with `ERR-UnknownClass` or `ERR-ClassQuotaExceeded`
+   * by Kippu; with any other §10 code by the ledger.
+   */
+  issueGranted(
+    organiserId: string,
+    request: EventsRequest,
+    input: IssueGrantedInput,
+  ): Promise<IssuedTicket>;
   /** Defines a ticket class for an event the organiser owns. */
   defineClass(
     organiserId: string,

@@ -194,6 +194,12 @@ The `events` router is the organiser's. Every procedure acts for the signed-in o
 - **Classes** (`events.classes.define`, `events.classes.list`) are Kippu data (`REQ-TC-2`), stored in `ticket_classes`: name, description, provenance, attendance policy, restrictions, quota and an opaque random 32-byte id.
   - A class declared `Purchased` with a restriction is refused at definition with `ERR-RestrictionNotPermitted` (`REQ-TC-3`). The store refuses it too.
   - `cannotTransfer` implies `cannotResale` (`REQ-TK-2`), so the class records the restrictions its tickets will carry on the ledger.
+- **Granted issuance** (`events.tickets.issueGranted`) issues a ticket from a `Granted` class to a holder's account (`US-B2`).
+  - The ticket carries the class's id, policy and restrictions, and `Granted` provenance (`REQ-TK-4`). A seat must be a canonical position of its zone; an unseated ticket gets a random 128-bit discriminator.
+  - Kippu refuses a class not defined for the event with `ERR-UnknownClass`, and one whose quota is reached with `ERR-ClassQuotaExceeded` (platform errors, `SPEC.md` §10 note). A `Purchased` class is refused: its tickets are sold through checkout.
+  - The quota counts `granted_issuances` rows under a lock on the class, so concurrent issuances never exceed it. A ledger refusal frees its place; a submission with no verdict keeps it, since the ticket may exist.
+  - Every other refusal is the ledger's, passed on: `ERR-CapacityExceeded`, `ERR-TicketIdExists`, `ERR-ZoneKindMismatch`, and so on.
+  - Free means free at every layer (`REQ-TC-4`): the issuance writes its audit row and its issuance record, and no payment record of any kind.
 
 ### Package releases
 
