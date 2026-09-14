@@ -24,6 +24,13 @@ export interface Config {
    * development sponsor; `production` is refused until real ones exist.
    */
   readonly ledgerEnvironment: "development" | "test" | "production";
+  /**
+   * The sponsor relay's base URL (`F-023`). When set, every ledger write is
+   * sponsored through the relay's client (`createRelaySponsor`), with its
+   * entitlements; when absent, `development` and `test` use the development
+   * sponsor.
+   */
+  readonly sponsorRelayUrl?: string;
 }
 
 export type Environment = Readonly<Record<string, string | undefined>>;
@@ -134,6 +141,21 @@ function readLedgerEnvironment(value: string | undefined): Config["ledgerEnviron
   return found;
 }
 
+/** The sponsor relay's base URL, when configured: an http(s) origin, optionally with a path. */
+function readSponsorRelayUrl(value: string | undefined): { sponsorRelayUrl?: string } {
+  if (value === undefined || value === "") return {};
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new ConfigError("KIPPU_SPONSOR_URL is not a URL");
+  }
+  if (url.protocol !== "https:" && url.protocol !== "http:") {
+    throw new ConfigError("KIPPU_SPONSOR_URL must be an http:// or https:// URL");
+  }
+  return { sponsorRelayUrl: value };
+}
+
 /** Refuses an environment carrying a route to any store but Kippu's own. */
 export function assertNoForeignStoreCredentials(env: Environment): void {
   const refused = Object.keys(env)
@@ -175,5 +197,6 @@ export function loadConfig(env: Environment = process.env): Config {
     },
     holderRpId,
     ledgerEnvironment: readLedgerEnvironment(env.KIPPU_LEDGER_ENVIRONMENT),
+    ...readSponsorRelayUrl(env.KIPPU_SPONSOR_URL),
   };
 }

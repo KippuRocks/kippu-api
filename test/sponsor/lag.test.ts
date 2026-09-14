@@ -12,11 +12,11 @@ import type {
   Timestamp,
 } from "@ticketto/sdk";
 import type { FastifyInstance } from "fastify";
-import { afterAll, beforeAll, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ledgerFactsProjection } from "../../src/derived/ledger-facts.js";
 import { createDerivedReader } from "../../src/derived/reader.js";
 import { connectRelayDerivedCopy, type RelayDerivedCopy } from "../../src/sponsor/derived.js";
-import { createEntitlements } from "../../src/sponsor/entitlements.js";
+import { createEntitlements, type Entitlements } from "../../src/sponsor/entitlements.js";
 import { buildSponsorRelay } from "../../src/sponsor/relay.js";
 import {
   createMigratedTestDatabase,
@@ -187,5 +187,57 @@ describeWithStore("lag-aware sponsorship (REQ-SP-5, NFR-11)", () => {
       "a b" as Cursor,
     );
     expect(response.statusCode).toBe(400);
+  });
+});
+
+describe("lag-aware sponsorship, without a database", () => {
+  it("REQ-SP-5: a refusal read just before the reader commits the receipt's batch is decided again, not final", async () => {
+    // The first decision reads the copy before the batch lands; by the time the
+    // relay checks the cursor, the copy already reflects it.
+    let decisions = 0;
+    const entitlements: Entitlements = {
+      decide: async () => {
+        decisions += 1;
+        return decisions === 1
+          ? { entitled: false, reason: "no ticket in the derived copy" }
+          : { entitled: true, entitlement: { kind: "accountCreation", account: "00" as never } };
+      },
+    };
+    const derived = {
+      queries: {} as RelayDerivedCopy["queries"],
+      current: async () => ({ cursor: "7" as Cursor, records: 8, lastRecordedAt: 0 }),
+      waitFor: async () => true,
+      close: async () => {},
+    } satisfies RelayDerivedCopy;
+    const relay = buildSponsorRelay({
+      sponsor: kmsP256Signer(softwareKmsP256Key()),
+      derived,
+      entitlements,
+      lagWait: 1_000,
+    });
+    const alice = (await import("@ticketto/profile-v0/testing")).softwareP256Signer().signer;
+    const signed = await transfer(
+      alice,
+      "01".repeat(32) as EventId,
+      "02".repeat(32) as TicketId,
+      alice,
+    );
+    try {
+      const response = await relay.inject({
+        method: "POST",
+        url: "/v0/sponsor",
+        payload: {
+          input: {
+            kind: "command",
+            bytes: Buffer.from(encodeSignedCommand(signed)).toString("hex"),
+          },
+          after: "7",
+        },
+      });
+      expect(response.statusCode, response.body).toBe(200);
+      expect(decisions).toBe(2);
+    } finally {
+      await relay.close();
+    }
   });
 });
