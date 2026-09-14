@@ -28,6 +28,14 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
+      - name: No metadata schema declares a personal-data field
+        run: pnpm lint:personal-data
+      - name: A deny-listed field fails the personal-data lint
+        run: |
+          if node packages/metadata-schema/dist/src/lint-cli.js packages/metadata-schema/test/fixtures/personal-data.schema.json; then
+            echo "the lint accepted a schema with a deny-listed field" >&2
+            exit 1
+          fi
       - name: Health endpoint answers from the built server
         run: |
           PORT=8080 node dist/server.js &
@@ -39,7 +47,7 @@ jobs:
           exit 1
 
   contract:
-    name: C5 contract — a client compiles against the packed @kippu/api
+    name: Contracts — a client installs the packed @kippu/api and @kippu/metadata-schema
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7

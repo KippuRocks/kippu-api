@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://meta.kippu.rocks/v0/schemas/class/1.0.json",
+  "title": "Kippu ticket class document",
+  "description": "A ticket class's name, description and what the ticket entitles. Tickets carry their class identifier; clients derive this document's locator from it. Public, and read without a Kippu account (REQ-MD-4). Carries no personal data.",
+  "type": "object",
+  "required": ["$schema", "classId", "eventId", "name"],
+  "properties": {
+    "$schema": {
+      "description": "The versioned schema this document conforms to.",
+      "const": "https://meta.kippu.rocks/v0/schemas/class/1.0.json"
+    },
+    "classId": {
+      "description": "The class identifier tickets carry, lower-case hex.",
+      "type": "string",
+      "pattern": "^(?:[0-9a-f]{2})+$"
+    },
+    "eventId": {
+      "description": "The ledger identifier of the event the class belongs to, lower-case hex.",
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "description": {
+      "type": "string"
+    },
+    "entitlements": {
+      "description": "What a ticket of this class entitles its holder to, one item per entry.",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  },
+  "unevaluatedProperties": false
+}

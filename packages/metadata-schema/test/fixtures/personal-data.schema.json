@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/personal-data.schema.json",
+  "description": "Deliberately violates the personal-data lint. Never published.",
+  "type": "object",
+  "required": ["name", "contactEmail"],
+  "properties": {
+    "name": { "type": "string" },
+    "contactEmail": { "type": "string" },
+    "organiser": {
+      "type": "object",
+      "properties": {
+        "tradingName": { "type": "string" },
+        "full_name": { "type": "string" }
+      }
+    }
+  }
+}

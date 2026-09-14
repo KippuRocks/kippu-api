@@ -15,6 +15,7 @@
     "lint": "biome ci .",
     "format": "biome check --write .",
     "test": "vitest run",
+    "lint:personal-data": "pnpm --filter @kippu/metadata-schema lint:personal-data",
     "check:contract": "scripts/check-api-contract.sh",
     "changeset": "changeset",
     "start": "node dist/server.js"

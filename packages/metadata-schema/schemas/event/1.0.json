@@ -1,0 +1,192 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://meta.kippu.rocks/v0/schemas/event/1.0.json",
+  "title": "Kippu event document",
+  "description": "Everything about an event that is not a ledger fact: name, description, venue, schedule, imagery, zone names and seat map references. Public, and read without a Kippu account (REQ-MD-4). Carries no personal data: an organiser is described by a trading name.",
+  "type": "object",
+  "required": ["$schema", "eventId", "name"],
+  "properties": {
+    "$schema": {
+      "description": "The versioned schema this document conforms to.",
+      "const": "https://meta.kippu.rocks/v0/schemas/event/1.0.json"
+    },
+    "eventId": {
+      "description": "The event's ledger identifier, lower-case hex.",
+      "$ref": "#/$defs/eventId"
+    },
+    "name": {
+      "$ref": "#/$defs/text"
+    },
+    "description": {
+      "type": "string"
+    },
+    "organiser": {
+      "type": "object",
+      "required": ["tradingName"],
+      "properties": {
+        "tradingName": {
+          "description": "The name the organiser trades under. Never a natural person's own name as personal data.",
+          "$ref": "#/$defs/text"
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "venue": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/text"
+        },
+        "address": {
+          "type": "object",
+          "properties": {
+            "streetAddress": {
+              "$ref": "#/$defs/text"
+            },
+            "locality": {
+              "$ref": "#/$defs/text"
+            },
+            "region": {
+              "$ref": "#/$defs/text"
+            },
+            "postalCode": {
+              "$ref": "#/$defs/text"
+            },
+            "country": {
+              "description": "ISO 3166-1 alpha-2 country code.",
+              "type": "string",
+              "pattern": "^[A-Z]{2}$"
+            }
+          },
+          "unevaluatedProperties": false
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "schedule": {
+      "type": "object",
+      "required": ["sessions"],
+      "properties": {
+        "timeZone": {
+          "description": "IANA time zone name the event is presented in, such as Europe/Madrid.",
+          "$ref": "#/$defs/text"
+        },
+        "sessions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["startsAt"],
+            "properties": {
+              "name": {
+                "$ref": "#/$defs/text"
+              },
+              "startsAt": {
+                "$ref": "#/$defs/dateTime"
+              },
+              "endsAt": {
+                "$ref": "#/$defs/dateTime"
+              }
+            },
+            "unevaluatedProperties": false
+          }
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "imagery": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["url"],
+        "properties": {
+          "url": {
+            "$ref": "#/$defs/httpsUrl"
+          },
+          "alt": {
+            "type": "string"
+          },
+          "mediaType": {
+            "$ref": "#/$defs/mediaType"
+          }
+        },
+        "unevaluatedProperties": false
+      },
+      "description": "Images of the event, in the order a client should prefer them."
+    },
+    "zones": {
+      "description": "Presentation of the event's zones, keyed by zone identifier. A zone's identity and kind are ledger facts; its name is not.",
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/hexId"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": {
+            "$ref": "#/$defs/text"
+          },
+          "description": {
+            "type": "string"
+          }
+        },
+        "unevaluatedProperties": false
+      }
+    },
+    "seatMaps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["url"],
+        "properties": {
+          "url": {
+            "$ref": "#/$defs/httpsUrl"
+          },
+          "mediaType": {
+            "$ref": "#/$defs/mediaType"
+          },
+          "zones": {
+            "description": "Zones this seat map shows. Absent means the whole event.",
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "$ref": "#/$defs/hexId"
+            }
+          }
+        },
+        "unevaluatedProperties": false
+      }
+    }
+  },
+  "unevaluatedProperties": false,
+  "$defs": {
+    "eventId": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "hexId": {
+      "type": "string",
+      "pattern": "^(?:[0-9a-f]{2})+$"
+    },
+    "text": {
+      "type": "string",
+      "minLength": 1
+    },
+    "dateTime": {
+      "description": "RFC 3339 date-time with an offset.",
+      "type": "string",
+      "format": "date-time"
+    },
+    "httpsUrl": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https://"
+    },
+    "mediaType": {
+      "type": "string",
+      "pattern": "^[a-z]+/[a-z0-9.+-]+$"
+    }
+  }
+}
