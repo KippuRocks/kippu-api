@@ -71,6 +71,22 @@ here is authoritative for a Ticketto fact (`REQ-IX-1`).
   `KIPPU_TEST_DATABASE_URL`. Without it they are skipped locally; in CI they
   may not be.
 
+### The sponsor relay
+
+Kippu sponsors every ledger write (`REQ-SP-1`, `AD-18` A) through a relay that runs as **its own process**: `pnpm sponsor:start` (`node dist/sponsor/server.js`, from the same image). It shares no code path with the API server, so neither one being down stops the other (`NFR-4`). A test checks that its module graph reaches nothing of the business layer.
+
+- **Read-only access to the derived copy, and nothing else.** Migration `0011` creates `kippu_sponsor_relay_reader`, a role that cannot log in and holds `SELECT` on the `derived_*` tables only. A deployment creates the relay's own login role and grants it that role. The relay connects with `KIPPU_SPONSOR_DERIVED_DATABASE_URL`, and its transactions are read only as well. It refuses to start with `KIPPU_DATABASE_URL`, libpq's `PG*` variables, or anything naming the ledger's store.
+- **The sponsor key.** No KMS provider is chosen. Outside production, `KIPPU_SPONSOR_SOFTWARE_SECRET_KEY` (64 hex characters) is the key of the software stand-in behind `KmsP256Key`. `KIPPU_SPONSOR_ENVIRONMENT=production` refuses to start until a provider's adapter replaces it.
+- **Where it listens.** `KIPPU_SPONSOR_HOST` and `KIPPU_SPONSOR_PORT` set the address, by default `0.0.0.0:8082`. `GET /health` answers only while the derived copy can be read, and reports the sponsor account and how far the copy has read the log.
+
+```sh
+psql "$KIPPU_DATABASE_URL" -c "CREATE ROLE kippu_sponsor_relay LOGIN PASSWORD 'local' IN ROLE kippu_sponsor_relay_reader"
+KIPPU_SPONSOR_ENVIRONMENT=development \
+KIPPU_SPONSOR_DERIVED_DATABASE_URL=postgres://kippu_sponsor_relay:local@127.0.0.1:54329/kippu_api \
+KIPPU_SPONSOR_SOFTWARE_SECRET_KEY=$(openssl rand -hex 32) \
+KIPPU_DATABASE_URL= pnpm sponsor:start
+```
+
 ### Metadata storage and serving
 
 Event and class documents, the schemas they declare, and the images they reference are public objects (`F-026` §5.3, `REQ-MD-4`). They are addressed at `https://meta.kippu.rocks` (`AD-22`): the `KIPPU_METADATA_PUBLIC_URL` setting, which defaults to it. A URL's path under that origin is the object's key, so `https://meta.kippu.rocks/v0/schemas/event/1.0.json` is stored at `v0/schemas/event/1.0.json`.
