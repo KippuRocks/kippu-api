@@ -33,6 +33,10 @@ jobs:
           --health-retries 30
     env:
       KIPPU_DATABASE_URL: postgres://kippu_api:kippu_api_ci@127.0.0.1:5432/kippu_api
+      # Placeholder hostnames: the real ones are not chosen yet.
+      KIPPU_LOGIN_RP_ID: login.kippu.example
+      KIPPU_LOGIN_ORIGINS: https://ibento.login.kippu.example
+      KIPPU_HOLDER_RP_ID: holder.kippu.example
       KIPPU_TEST_DATABASE_URL: postgres://kippu_api:kippu_api_ci@127.0.0.1:5432/kippu_api
     steps:
       - uses: actions/checkout@v7
@@ -112,6 +116,10 @@ jobs:
           --health-retries 30
     env:
       KIPPU_DATABASE_URL: postgres://kippu_api:kippu_api_ci@127.0.0.1:5432/kippu_api
+      # Placeholder hostnames: the real ones are not chosen yet.
+      KIPPU_LOGIN_RP_ID: login.kippu.example
+      KIPPU_LOGIN_ORIGINS: https://ibento.login.kippu.example
+      KIPPU_HOLDER_RP_ID: holder.kippu.example
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
@@ -126,7 +134,9 @@ jobs:
       - name: Health endpoint answers from the container
         run: |
           docker run --rm --network host -e KIPPU_DATABASE_URL kippu-api:ci node dist/store/migrate-cli.js
-          docker run -d --name kippu-api --network host -e KIPPU_DATABASE_URL kippu-api:ci
+          docker run -d --name kippu-api --network host \
+            -e KIPPU_DATABASE_URL -e KIPPU_LOGIN_RP_ID -e KIPPU_LOGIN_ORIGINS -e KIPPU_HOLDER_RP_ID \
+            kippu-api:ci
           for _ in $(seq 1 30); do
             if curl -fsS http://127.0.0.1:8080/health; then exit 0; fi
             sleep 1

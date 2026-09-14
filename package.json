@@ -25,9 +25,11 @@
     "vendor:check": "scripts/vendor-libticketto.sh --check"
   },
   "dependencies": {
+    "@simplewebauthn/server": "14.0.2",
     "@trpc/server": "11.18.0",
     "fastify": "5.12.4",
-    "pg": "8.23.0"
+    "pg": "8.23.0",
+    "zod": "4.6.5"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.13",

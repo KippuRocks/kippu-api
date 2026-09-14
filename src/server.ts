@@ -1,11 +1,13 @@
 import { buildApp } from "./app.js";
+import { createAuth } from "./auth/service.js";
 import { loadConfig } from "./config.js";
 import { assertMigrated } from "./store/migrate.js";
 import { createStore } from "./store/store.js";
 
 const config = loadConfig();
 const store = createStore(config.databaseUrl);
-const app = buildApp({ logger: true });
+const auth = createAuth({ store, relyingParty: config.login });
+const app = buildApp({ logger: true }, undefined, { auth });
 
 const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
   app.log.info({ signal }, "shutting down");
