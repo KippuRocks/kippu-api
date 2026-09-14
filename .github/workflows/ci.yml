@@ -101,6 +101,25 @@ jobs:
           grep -iFx "access-control-allow-origin: *" <(tr -d '\r' < headers.txt)
           if grep -iq "access-control-allow-credentials" headers.txt; then exit 1; fi
           cmp event.json packages/metadata-schema/schemas/event/1.0.json
+      - name: The sponsor relay starts and serves with kippu-api stopped, on read-only credentials
+        env:
+          KIPPU_DATABASE_URL: ""
+        run: |
+          psql "postgres://kippu_api:kippu_api_ci@127.0.0.1:5432/kippu_api" -v ON_ERROR_STOP=1 -c \
+            "CREATE ROLE kippu_sponsor_relay LOGIN PASSWORD 'kippu_sponsor_relay_ci' IN ROLE kippu_sponsor_relay_reader"
+          if curl -fsS http://127.0.0.1:8080/health; then echo "kippu-api must not be running" >&2; exit 1; fi
+          KIPPU_SPONSOR_ENVIRONMENT=test \
+          KIPPU_SPONSOR_DERIVED_DATABASE_URL=postgres://kippu_sponsor_relay:kippu_sponsor_relay_ci@127.0.0.1:5432/kippu_api \
+          KIPPU_SPONSOR_SOFTWARE_SECRET_KEY=1111111111111111111111111111111111111111111111111111111111111111 \
+          KIPPU_SPONSOR_PORT=8082 \
+            node dist/sponsor/server.js &
+          relay=$!
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8082/health; then kill "$relay"; exit 0; fi
+            sleep 1
+          done
+          echo "the sponsor relay did not answer" >&2
+          exit 1
       - name: Health endpoint answers from the built server
         run: |
           PORT=8080 node dist/server.js &

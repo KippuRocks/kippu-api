@@ -25,7 +25,8 @@
     "vendor:libticketto": "scripts/vendor-libticketto.sh",
     "vendor:check": "scripts/vendor-libticketto.sh --check",
     "metadata:publish-schemas": "node dist/metadata/publish-schemas-cli.js",
-    "metadata:edge": "node dist/metadata/edge-server.js"
+    "metadata:edge": "node dist/metadata/edge-server.js",
+    "sponsor:start": "node dist/sponsor/server.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.1131.0",
