@@ -51,6 +51,27 @@ export interface WrittenDocument {
   readonly etag: string;
 }
 
+/** The image types an event document may use: raster formats with no active content. */
+export type ImageMediaType = "image/jpeg" | "image/png" | "image/webp";
+
+/** An image to upload for an event's document (`T-026-06`). */
+export interface UploadImageInput {
+  /** The `EventId` of the event the image illustrates. */
+  readonly event: string;
+  readonly mediaType: ImageMediaType;
+  /** The image's bytes, in standard base64. At most 2 MiB once decoded. */
+  readonly data: string;
+}
+
+/** An image stored at the metadata origin. */
+export interface UploadedImage {
+  /** Where the image is publicly served: the URL a document references it by. */
+  readonly url: string;
+  readonly mediaType: ImageMediaType;
+  /** Its size in bytes. */
+  readonly size: number;
+}
+
 /**
  * What the metadata router reaches. An edit writes a document and nothing
  * else: no ledger write occurs (`AC-A3.1`). A document that does not conform to
@@ -62,4 +83,12 @@ export interface Metadata {
   putEventDocument(organiserId: string, input: PutEventDocumentInput): Promise<WrittenDocument>;
   /** Writes a ticket class's document at its derived locator, replacing the previous version. */
   putClassDocument(organiserId: string, input: PutClassDocumentInput): Promise<WrittenDocument>;
+  /**
+   * Stores an image for an event the organiser owns, at the metadata origin, so
+   * its document can reference it and stay self-contained (`F-026` plan §5.3). An
+   * image of another type, larger than the limit, or whose bytes are not the
+   * type declared is refused with `RefusedRequest`. Uploading the same bytes
+   * again answers the same URL.
+   */
+  uploadImage(organiserId: string, input: UploadImageInput): Promise<UploadedImage>;
 }

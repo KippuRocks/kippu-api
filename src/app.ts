@@ -12,6 +12,9 @@ import { appRouter } from "./trpc/router.js";
 /** Where the `C5` tRPC contract is served. */
 export const TRPC_PREFIX = "/v0/trpc";
 
+/** The largest tRPC request body, in bytes: an image upload's base64 and its envelope (`T-026-06`). */
+export const TRPC_BODY_LIMIT = 4 * 1024 * 1024;
+
 /**
  * Builds the Kippu API's HTTP application without binding a port, so tests can
  * drive it through `inject` or a real client.
@@ -35,25 +38,32 @@ export function buildApp(
 
   app.get("/health", async () => ({ status: "ok" }) as const);
 
-  app.register(fastifyTRPCPlugin, {
-    prefix: TRPC_PREFIX,
-    trpcOptions: {
-      router: trpcRouter,
-      createContext: makeCreateContext(services),
-      onError({
-        error,
-        path,
-        req,
-      }: {
-        error: TRPCError;
-        path?: string | undefined;
-        req: FastifyRequest;
-      }) {
-        if (error.code === "INTERNAL_SERVER_ERROR") {
-          req.log.error({ err: error.cause ?? error, path }, "procedure failed");
-        }
+  // Big enough for an uploaded image in base64 (`MAX_IMAGE_BYTES`), for tRPC calls
+  // only; every other route keeps Fastify's default.
+  app.register(async (scope) => {
+    scope.addHook("onRoute", (route) => {
+      route.bodyLimit = TRPC_BODY_LIMIT;
+    });
+    await scope.register(fastifyTRPCPlugin, {
+      prefix: TRPC_PREFIX,
+      trpcOptions: {
+        router: trpcRouter,
+        createContext: makeCreateContext(services),
+        onError({
+          error,
+          path,
+          req,
+        }: {
+          error: TRPCError;
+          path?: string | undefined;
+          req: FastifyRequest;
+        }) {
+          if (error.code === "INTERNAL_SERVER_ERROR") {
+            req.log.error({ err: error.cause ?? error, path }, "procedure failed");
+          }
+        },
       },
-    },
+    });
   });
 
   return app;

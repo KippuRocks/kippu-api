@@ -10,6 +10,7 @@ import { RefusedRequest, SpecCodeError } from "../authority/errors.js";
 import { ownedEvent } from "../events/ownership.js";
 import type { KippuTicketto } from "../ledger/ticketto.js";
 import type { Store } from "../store/store.js";
+import { checkImage, imageKey } from "./images.js";
 import type { Metadata, MetadataDocument, WrittenDocument } from "./ports.js";
 import { foreignReferences } from "./self-contained.js";
 import type { MetadataStorage } from "./storage.js";
@@ -122,6 +123,17 @@ export function createMetadataDocuments(options: MetadataDocumentsOptions): Meta
         throw new RefusedRequest("the document's classId and eventId must be the class's");
       }
       return write(classLocator(classId, origin), schemaId, document);
+    },
+
+    async uploadImage(organiserId, { event, mediaType, data }) {
+      await ownedEvent(ledger, authority, organiserId, event as EventId);
+      const checked = checkImage(mediaType, data);
+      if (!checked.ok) {
+        throw new RefusedRequest(checked.reason);
+      }
+      const key = imageKey(event, mediaType, checked.bytes);
+      await storage.put(key, checked.bytes, { contentType: mediaType });
+      return { url: `${origin}/${key}`, mediaType, size: checked.bytes.length };
     },
   };
 }

@@ -3,7 +3,13 @@ import { z } from "zod";
 import { RefusedRequest, SpecCodeError } from "../authority/errors.js";
 import { toTRPCError } from "../trpc/errors.js";
 import { organiserProcedure, router } from "../trpc/trpc.js";
-import type { PutClassDocumentInput, PutEventDocumentInput, WrittenDocument } from "./ports.js";
+import type {
+  PutClassDocumentInput,
+  PutEventDocumentInput,
+  UploadedImage,
+  UploadImageInput,
+  WrittenDocument,
+} from "./ports.js";
 
 /**
  * Validates with a schema, and types the input as `T` — a type declared without
@@ -42,6 +48,15 @@ const putEventDocumentInput = z.object({ event: id32, document }).strict();
 
 const putClassDocumentInput = z.object({ event: id32, class: id32, document }).strict();
 
+/** Type, size and signature are the service's to check (`src/metadata/images.ts`). */
+const uploadImageInput = z
+  .object({
+    event: id32,
+    mediaType: z.string().max(100),
+    data: z.string().min(1).max(3_000_000),
+  })
+  .strict();
+
 /**
  * Organisers' editing of public metadata documents (`US-A3`, `F-026` plan §5.4).
  * Each mutation validates the whole document against the schema it declares and
@@ -58,6 +73,20 @@ export const metadataRouter = router({
       .mutation(
         ({ ctx, input }): Promise<WrittenDocument> =>
           mapped(() => ctx.services.metadata.putEventDocument(ctx.principal.organiserId, input)),
+      ),
+  }),
+  images: router({
+    /**
+     * Uploads a JPEG, PNG or WebP image of at most 2 MiB, as base64, for an event
+     * the organiser owns. Answers the URL at the metadata origin a document
+     * references it by. A disallowed type, an oversized image, or bytes that are
+     * not the declared type are a `BAD_REQUEST`.
+     */
+    upload: organiserProcedure
+      .input(parser<UploadImageInput>(uploadImageInput))
+      .mutation(
+        ({ ctx, input }): Promise<UploadedImage> =>
+          mapped(() => ctx.services.metadata.uploadImage(ctx.principal.organiserId, input)),
       ),
   }),
   classes: router({
