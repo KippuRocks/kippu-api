@@ -10,8 +10,10 @@ WORKDIR /app
 # The repository is a pnpm workspace. Dependencies are fetched from the
 # lockfile alone, then installed offline once every workspace manifest is in
 # place, so the image does not need to list the workspace's packages by hand.
+# Vendored packages (vendor/) are part of the lockfile's inputs.
 FROM base AS fetch
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY vendor ./vendor
 RUN pnpm fetch
 
 FROM fetch AS build

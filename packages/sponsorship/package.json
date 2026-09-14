@@ -1,0 +1,42 @@
+{
+  "name": "@kippu/sponsorship",
+  "version": "0.0.0",
+  "description": "Kippu's sponsorship codec, verification, and the sponsor's p256 KMS signer (F-023)",
+  "license": "UNLICENSED",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "sideEffects": false,
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing.d.ts",
+      "default": "./dist/testing.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@noble/curves": "2.4.0",
+    "@noble/hashes": "2.4.0",
+    "scale-ts": "1.6.1"
+  },
+  "peerDependencies": {
+    "@ticketto/profile-v0": "0.0.0",
+    "@ticketto/sdk": "0.0.0"
+  },
+  "devDependencies": {
+    "@ticketto/profile-v0": "file:../../vendor/libticketto/ticketto-profile-v0-0.0.0.tgz",
+    "@ticketto/sdk": "file:../../vendor/libticketto/ticketto-sdk-0.0.0.tgz"
+  }
+}
