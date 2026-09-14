@@ -90,6 +90,7 @@ jobs:
           docker exec kippu-metadata-storage sh -c \
             'mc alias set local http://127.0.0.1:9000 kippu_metadata kippu_metadata_ci && mc mb local/kippu-metadata'
           pnpm metadata:publish-schemas
+          pnpm metadata:check-self-contained
           pnpm metadata:edge &
           for _ in $(seq 1 30); do
             if curl -fsS http://127.0.0.1:8081/health >/dev/null; then break; fi
