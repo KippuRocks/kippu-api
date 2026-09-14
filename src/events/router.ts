@@ -4,7 +4,14 @@ import type { OrganiserPrincipal } from "../auth/ports.js";
 import { SpecCodeError } from "../authority/errors.js";
 import { toTRPCError } from "../trpc/errors.js";
 import { organiserProcedure, router } from "../trpc/trpc.js";
-import type { DefineClassInput, EventInput, EventsRequest, TicketClass } from "./ports.js";
+import type {
+  CreatedEvent,
+  CreateEventInput,
+  DefineClassInput,
+  EventInput,
+  EventsRequest,
+  TicketClass,
+} from "./ports.js";
 
 /**
  * Validates with a schema, and types the input as `T` — a type declared without
@@ -43,6 +50,15 @@ const policy = z.discriminatedUnion("kind", [
 ]);
 
 const eventInput = z.object({ event: id32 }).strict();
+
+const zone = z.object({ id: id32, kind: z.enum(["Seated", "Unseated"]) }).strict();
+
+const createEventInput = z
+  .object({
+    zones: z.array(zone).max(1000),
+    capacity: count.nullable(),
+  })
+  .strict();
 
 const defineClassInput = z
   .object({
@@ -88,5 +104,18 @@ const classesRouter = router({
  * organiser's: Kippu exercises their ledger authority for them (`REQ-OA-1`).
  */
 export const eventsRouter = router({
+  /**
+   * Creates an event owned by the organiser, `Active`, with its zones and an
+   * optional capacity (`US-A1`). Answers once the ledger has recorded it, with
+   * the event's id and the receipt's log cursor.
+   */
+  create: organiserProcedure
+    .input(parser<CreateEventInput>(createEventInput))
+    .mutation(
+      ({ ctx, input }): Promise<CreatedEvent> =>
+        mapped(() =>
+          ctx.services.events.createEvent(ctx.principal.organiserId, requestOf(ctx), input),
+        ),
+    ),
   classes: classesRouter,
 });

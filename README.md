@@ -162,6 +162,7 @@ Kippu holds and exercises each organiser's authority over their events on the le
 
 The `events` router is the organiser's. Every procedure acts for the signed-in organiser, and Kippu signs any ledger write with their authority. An event's owner is read from the ledger (`REQ-IX-1`): `ERR-EventNotFound` when the ledger has no such event, `ERR-NotOwner` when the organiser does not own it.
 
+- **Events** (`events.create`) are created with the organiser's authority, so the ledger records their account as the owner, `Active` (`AC-A1.1`). The SDK derives the `EventId` through the profile from that account and a random salt (`REQ-EV-9`). The procedure answers once the ledger has recorded the event, with its id and the receipt's cursor. `organiser_events` links the event to the organiser and the request that created it; ledger facts about the event live in the derived copy, not here.
 - **Classes** (`events.classes.define`, `events.classes.list`) are Kippu data (`REQ-TC-2`), stored in `ticket_classes`: name, description, provenance, attendance policy, restrictions, quota and an opaque random 32-byte id.
   - A class declared `Purchased` with a restriction is refused at definition with `ERR-RestrictionNotPermitted` (`REQ-TC-3`). The store refuses it too.
   - `cannotTransfer` implies `cannotResale` (`REQ-TK-2`), so the class records the restrictions its tickets will carry on the ledger.

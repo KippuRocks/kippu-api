@@ -2,6 +2,7 @@ import type { OrganiserAuthority } from "../authority/authority.js";
 import { type Classes, createClasses } from "../classes/classes.js";
 import type { KippuTicketto } from "../ledger/ticketto.js";
 import type { Store } from "../store/store.js";
+import { createEventWith } from "./create-event.js";
 import type { Events } from "./ports.js";
 
 export interface EventsOptions {
@@ -19,6 +20,7 @@ export function createEvents(options: EventsOptions): Events & { readonly classe
   const classes = createClasses(options);
   return {
     classes,
+    createEvent: createEventWith(options),
     defineClass: (organiserId, request, input) => classes.define(organiserId, request, input),
     listClasses: (organiserId, input) => classes.list(organiserId, input),
   };
