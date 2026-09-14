@@ -10,11 +10,13 @@
     "node": ">=24"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
-    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.build.json && pnpm --filter \"./packages/**\" build",
+    "typecheck": "tsc --noEmit && pnpm --filter \"./packages/**\" typecheck",
     "lint": "biome ci .",
     "format": "biome check --write .",
     "test": "vitest run",
+    "check:contract": "scripts/check-api-contract.sh",
+    "changeset": "changeset",
     "start": "node dist/server.js"
   },
   "dependencies": {
@@ -23,6 +25,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.13",
+    "@changesets/cli": "3.0.2",
     "@trpc/client": "11.18.0",
     "@types/node": "24.13.4",
     "typescript": "7.0.2",

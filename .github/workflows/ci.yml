@@ -38,6 +38,19 @@ jobs:
           echo "health endpoint did not answer" >&2
           exit 1
 
+  contract:
+    name: C5 contract — a client compiles against the packed @kippu/api
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check:contract
+
   image:
     name: Container image (built, never pushed)
     runs-on: ubuntu-latest
