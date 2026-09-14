@@ -79,6 +79,13 @@ export interface TicketView extends CopiedFact {
   readonly restrictions: { readonly cannotResale: boolean; readonly cannotTransfer: boolean };
   /** Recorded attendances (`INV-3`). */
   readonly attendances: number;
+  /**
+   * The class as Kippu defines it (`REQ-TC-2`): its name, so a class is legible
+   * through Kippu before any document is written (`AC-B2.6`). `null` when Kippu
+   * holds no definition for the ticket's class id — a ticket issued by some
+   * other Ticketto client, say. Kippu data, not a ledger fact.
+   */
+  readonly kippuClass: { readonly name: string } | null;
   /** The class document's locator, derived from the class id (`F-026` plan §5.1). */
   readonly classMetadataLocator: string;
   /** The class document, or `null` when Kippu hosts none: the class is then legible only by its ledger facts. */
