@@ -19,6 +19,13 @@ packages for clients live beside it under `packages/`:
 |---|---|
 | `@kippu/api` (`packages/api`) | Types of the tRPC router — contract `C5`. Declarations only |
 | `@kippu/metadata-schema` (`packages/metadata-schema`) | JSON Schemas for the public metadata documents — contract `C6` — and the personal-data field lint |
+| `@kippu/sponsorship` (`packages/sponsorship`) | Sponsorship codec and verification, and the sponsor's `p256` KMS signer (`F-023`). Consumed by `ticketto-offchain` |
+
+`@ticketto/sdk` and `@ticketto/profile-v0` are not published to a registry. They
+are vendored as `pnpm pack` tarballs from a pinned `libticketto` commit
+(`vendor/libticketto/`): `pnpm vendor:libticketto <commit>` re-pins them, and
+`pnpm vendor:check` (run in CI) rebuilds them at the recorded commit and fails
+if they differ.
 
 ## Development
 

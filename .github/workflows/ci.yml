@@ -81,6 +81,17 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm check:contract
 
+  vendor:
+    name: Vendored libticketto reproduces from its pinned commit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - run: pnpm vendor:check
+
   image:
     name: Container image (built, never pushed)
     runs-on: ubuntu-latest

@@ -4,6 +4,10 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+overrides:
+  '@ticketto/profile-v0': file:vendor/libticketto/ticketto-profile-v0-0.0.0.tgz
+  '@ticketto/sdk': file:vendor/libticketto/ticketto-sdk-0.0.0.tgz
+
 importers:
 
   .:
@@ -54,6 +58,24 @@ importers:
       ajv-formats:
         specifier: 3.0.1
         version: 3.0.1(ajv@8.20.0)
+
+  packages/sponsorship:
+    dependencies:
+      '@noble/curves':
+        specifier: 2.4.0
+        version: 2.4.0
+      '@noble/hashes':
+        specifier: 2.4.0
+        version: 2.4.0
+      '@ticketto/profile-v0':
+        specifier: file:../../vendor/libticketto/ticketto-profile-v0-0.0.0.tgz
+        version: file:vendor/libticketto/ticketto-profile-v0-0.0.0.tgz
+      '@ticketto/sdk':
+        specifier: file:../../vendor/libticketto/ticketto-sdk-0.0.0.tgz
+        version: file:vendor/libticketto/ticketto-sdk-0.0.0.tgz
+      scale-ts:
+        specifier: 1.6.1
+        version: 1.6.1
 
 packages:
 
@@ -219,6 +241,14 @@ packages:
     resolution: {integrity: sha512-6QEf6yqFbETdwGITKq57aYoPfX/3K8XFNwsAlx0C1M7o8cb79sv1M3w+tWuWvIcSbNqrLF7OD7YpZMVVz335hQ==}
     engines: {node: '>=20.0.0'}
 
+  '@noble/curves@2.4.0':
+    resolution: {integrity: sha512-P4/62zrgfH33CneE3Dn4WhJVA22YUU0eR51wKIan4NVRvwsA0YnPTwWGpNbpuacSujmSFLvyzpyuR30+fbq2Ew==}
+    engines: {node: '>= 20.19.0'}
+
+  '@noble/hashes@2.4.0':
+    resolution: {integrity: sha512-X5XaVWZIBCT7HHZGm5I7ZQXDwLG+bGXuSrMQAW+7Zvl87h1kmc1ZB1VSRJcpUfoUrGQp4Fkoxm5kZ+Ms+aW+eA==}
+    engines: {node: '>= 20.19.0'}
+
   '@oxc-project/types@0.149.0':
     resolution: {integrity: sha512-Efcc+iF0j3Bf67YjEqIqWXbX5XddXoK/Mw4K1/JuXwRCZ8N16VR7iT23nlCc9XrveFVh/E5Rqs2StT0V8v9LdA==}
 
@@ -321,6 +351,16 @@ packages:
 
   '@rolldown/pluginutils@1.0.1':
     resolution: {integrity: sha512-2j9bGt5Jh8hj+vPtgzPtl72j0yRxHAyumoo6TNfAjsLB04UtpSvPbPcDcBMxz7n+9CYB0c1GxQFxYRg2jimqGw==}
+
+  '@ticketto/profile-v0@file:vendor/libticketto/ticketto-profile-v0-0.0.0.tgz':
+    resolution: {integrity: sha512-VenqPGpnmfhHwo+bxB7BQ2BByM64xgdpl7DkRfP3xbGlTlMzT9gGX6u4S9IZ0oZXyNz+N7giOFNYJIR0BbBwrA==, tarball: file:vendor/libticketto/ticketto-profile-v0-0.0.0.tgz}
+    version: 0.0.0
+    engines: {node: '>=24'}
+
+  '@ticketto/sdk@file:vendor/libticketto/ticketto-sdk-0.0.0.tgz':
+    resolution: {integrity: sha512-8s0s1qKZ6UgRB7GWCgzq+1U4HfkbemIPrOIZlgsuDbgS0Sj2AsS8nSkc4LVHTWFkgeIuAtLL3WwVtsLe3ICHJg==, tarball: file:vendor/libticketto/ticketto-sdk-0.0.0.tgz}
+    version: 0.0.0
+    engines: {node: '>=24'}
 
   '@trpc/client@11.18.0':
     resolution: {integrity: sha512-wOqeg3Fvl25V1ZisQhUD3K8G60ZJDlSGJNSyeXrLH24xAo5w6GSR2Kzb1cSNY9Y+IQ2YZvYGZstBU+V/ulo/ow==}
@@ -823,6 +863,9 @@ packages:
     resolution: {integrity: sha512-b3rppTKm9T+PsVCBEOUR46GWI7fdOs00VKZ1+9c1EWDaDMvjQc6tUwuFyIprgGgTcWoVHSKrU8H31ZHA2e0RHA==}
     engines: {node: '>=10'}
 
+  scale-ts@1.6.1:
+    resolution: {integrity: sha512-PBMc2AWc6wSEqJYBDPcyCLUj9/tMKnLX70jLOSndMtcUoLQucP/DM0vnQo1wJAYjTrQiq8iG9rD0q6wFzgjH7g==}
+
   secure-json-parse@4.1.0:
     resolution: {integrity: sha512-l4KnYfEyqYJxDwlNVyRfO2E4NTHfMKAWdUuA8J0yve2Dz/E/PdBepY03RvyJpssIpRFwJoCD55wA+mEDs6ByWA==}
 
@@ -1187,6 +1230,12 @@ snapshots:
       tinyglobby: 0.2.17
       yaml: 2.9.1
 
+  '@noble/curves@2.4.0':
+    dependencies:
+      '@noble/hashes': 2.4.0
+
+  '@noble/hashes@2.4.0': {}
+
   '@oxc-project/types@0.149.0': {}
 
   '@pinojs/redact@0.4.0': {}
@@ -1239,6 +1288,15 @@ snapshots:
     optional: true
 
   '@rolldown/pluginutils@1.0.1': {}
+
+  '@ticketto/profile-v0@file:vendor/libticketto/ticketto-profile-v0-0.0.0.tgz':
+    dependencies:
+      '@noble/curves': 2.4.0
+      '@noble/hashes': 2.4.0
+      '@ticketto/sdk': file:vendor/libticketto/ticketto-sdk-0.0.0.tgz
+      scale-ts: 1.6.1
+
+  '@ticketto/sdk@file:vendor/libticketto/ticketto-sdk-0.0.0.tgz': {}
 
   '@trpc/client@11.18.0(@trpc/server@11.18.0(typescript@7.0.2))(typescript@7.0.2)':
     dependencies:
@@ -1652,6 +1710,8 @@ snapshots:
       ret: 0.5.0
 
   safe-stable-stringify@2.5.0: {}
+
+  scale-ts@1.6.1: {}
 
   secure-json-parse@4.1.0: {}
 
