@@ -75,9 +75,17 @@ async function applyCommand(
       await exactlyOne(
         tx,
         record,
-        `INSERT INTO derived_events (id, owner, status, max_capacity, issued, zones, sequence)
-         VALUES ($1, $2, 'Active', $3, 0, $4, $5)`,
-        [command.event, event.value.owner, command.capacity, zonesJson(command.zones), sequence],
+        `INSERT INTO derived_events
+           (id, owner, status, max_capacity, issued, zones, metadata_locator, sequence)
+         VALUES ($1, $2, 'Active', $3, 0, $4, $5, $6)`,
+        [
+          command.event,
+          event.value.owner,
+          command.capacity,
+          zonesJson(command.zones),
+          command.metadata,
+          sequence,
+        ],
       );
       return;
     }

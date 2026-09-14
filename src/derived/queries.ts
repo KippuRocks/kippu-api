@@ -49,9 +49,17 @@ export interface DerivedRead<T> {
   readonly freshness: CopyFreshness;
 }
 
+/** An event as the copy holds it: its ledger facts, and the metadata locator the ledger records for it. */
+export interface ProjectedEvent extends Projected<LedgerEvent> {
+  /** The stable locator `createEvent` recorded (`REQ-MD-1`); `null` when it recorded none. */
+  readonly metadataLocator: string | null;
+}
+
 /** Reads the projections: events, tickets, holdings and attendance. */
 export interface DerivedQueries {
-  event(id: EventId): Promise<DerivedRead<Projected<LedgerEvent> | null>>;
+  event(id: EventId): Promise<DerivedRead<ProjectedEvent | null>>;
+  /** Every event an account owns on the ledger, most recently created first. */
+  eventsOwnedBy(account: AccountId): Promise<DerivedRead<readonly ProjectedEvent[]>>;
   ticket(id: TicketId): Promise<DerivedRead<Projected<Ticket> | null>>;
   /** Every ticket an account holds, ordered by event, then ticket. */
   holdings(account: AccountId): Promise<DerivedRead<readonly Projected<Ticket>[]>>;
@@ -66,6 +74,7 @@ interface EventRow {
   max_capacity: string | null;
   issued: string;
   zones: { id: string; kind: Zone["kind"] }[];
+  metadata_locator: string | null;
   sequence: string;
 }
 
@@ -111,19 +120,25 @@ function projected<T>(value: T, sequence: string): Projected<T> {
   return { value, sequence: int(sequence), authoritative: false };
 }
 
-function eventOf(row: EventRow): Projected<LedgerEvent> {
-  return projected(
-    {
-      id: row.id as EventId,
-      owner: row.owner as AccountId,
-      status: row.status,
-      maxCapacity: nullableInt(row.max_capacity),
-      issued: int(row.issued),
-      zones: row.zones.map(({ id, kind }) => ({ id: id as ZoneId, kind })),
-    },
-    row.sequence,
-  );
+function eventOf(row: EventRow): ProjectedEvent {
+  return {
+    ...projected(
+      {
+        id: row.id as EventId,
+        owner: row.owner as AccountId,
+        status: row.status,
+        maxCapacity: nullableInt(row.max_capacity),
+        issued: int(row.issued),
+        zones: row.zones.map(({ id, kind }) => ({ id: id as ZoneId, kind })),
+      },
+      row.sequence,
+    ),
+    metadataLocator: row.metadata_locator,
+  };
 }
+
+const EVENT_COLUMNS =
+  "e.id, e.owner, e.status, e.max_capacity, e.issued, e.zones, e.metadata_locator, e.sequence";
 
 function placementOf(row: TicketRow): Placement {
   return row.placement_kind === "Seated"
@@ -197,12 +212,25 @@ export function createDerivedQueries(store: Store): DerivedQueries {
     async event(id) {
       const { rows, freshness } = await read<EventRow>(
         store,
-        `SELECT head.*, e.id, e.owner, e.status, e.max_capacity, e.issued, e.zones, e.sequence
-         FROM head LEFT JOIN derived_events e ON e.id = $1`,
+        `SELECT head.*, ${EVENT_COLUMNS} FROM head LEFT JOIN derived_events e ON e.id = $1`,
         [id],
       );
       const row = rows[0];
       return { result: row === undefined ? null : eventOf(row), freshness };
+    },
+    async eventsOwnedBy(account) {
+      const { rows, freshness } = await read<EventRow>(
+        store,
+        `SELECT head.*, ${EVENT_COLUMNS}
+         FROM head
+         LEFT JOIN derived_events e ON e.owner = $1
+         LEFT JOIN LATERAL (
+           SELECT min(l.sequence) AS created FROM derived_log l WHERE l.event_id = e.id
+         ) c ON true
+         ORDER BY c.created DESC, e.id`,
+        [account],
+      );
+      return { result: rows.map(eventOf), freshness };
     },
     async ticket(id) {
       const { rows, freshness } = await read<TicketRow>(

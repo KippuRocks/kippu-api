@@ -1,3 +1,4 @@
+import type { Reads } from "../derived/ports.js";
 import type { Events } from "../events/ports.js";
 import type { Metadata } from "../metadata/ports.js";
 import type {
@@ -197,4 +198,5 @@ export interface Services {
   readonly auth: Auth;
   readonly events: Events;
   readonly metadata: Metadata;
+  readonly derived: Reads;
 }
