@@ -9,7 +9,12 @@ import { loadConfig } from "../../src/config.js";
 import { positionOf } from "../../src/events/zones.js";
 import type { KippuTicketto } from "../../src/ledger/ticketto.js";
 import type { AppRouter } from "../../src/trpc/router.js";
-import { createDomainServices, createServer, WiringError } from "../../src/wiring.js";
+import {
+  createDomainServices,
+  createServer,
+  type KippuServer,
+  WiringError,
+} from "../../src/wiring.js";
 import { SoftwareAuthenticator } from "../support/authenticator.js";
 import {
   createMigratedTestDatabase,
@@ -17,6 +22,7 @@ import {
   type TestDatabase,
 } from "../support/database.js";
 import { randomId } from "../support/events.js";
+import { memoryMetadataStorage } from "../support/object-storage.js";
 
 /** Placeholder hostnames: the real ones are not chosen yet. */
 const LOGIN_RP_ID = "login.kippu.example";
@@ -47,6 +53,7 @@ describe("the development wiring", () => {
 
 describeWithStore("the server, wired for development", () => {
   let database: TestDatabase;
+  let server: KippuServer;
   let app: FastifyInstance;
   let ledger: KippuTicketto;
   let address: string;
@@ -54,12 +61,23 @@ describeWithStore("the server, wired for development", () => {
   beforeAll(async () => {
     database = await createMigratedTestDatabase();
     const config = loadConfig(environment(database.url, "development"));
-    ({ app, ledger } = createServer(config, database.store));
+    // As server.ts does, with in-memory object storage standing in for S3.
+    server = createServer(
+      config,
+      database.store,
+      {},
+      {
+        metadataPublicUrl: "https://meta.kippu.rocks",
+        metadataStorage: memoryMetadataStorage(),
+      },
+    );
+    ({ app, ledger } = server);
+    server.start();
     address = await app.listen({ host: "127.0.0.1", port: 0 });
   });
 
   afterAll(async () => {
-    await app.close();
+    await server.close();
     await database.drop();
   });
 
@@ -137,7 +155,7 @@ describeWithStore("the server, wired for development", () => {
     });
     expect(linked.holder.account).toBe(guest.signer.account);
 
-    const { ticket } = await organiser.events.tickets.issueGranted.mutate({
+    const { ticket, cursor } = await organiser.events.tickets.issueGranted.mutate({
       event,
       class: press.id,
       zone: stalls,
@@ -161,6 +179,29 @@ describeWithStore("the server, wired for development", () => {
       ok: true,
       value: { status: "Active", issued: 1 },
     });
+
+    // The event's document is edited, and the derived copy shows the event, with its
+    // document joined, once it has read the issuance's record (F-025, F-026).
+    await organiser.metadata.events.put.mutate({
+      event,
+      document: {
+        $schema: "https://meta.kippu.rocks/v0/schemas/event/1.0.json",
+        eventId: event,
+        name: "Opening night",
+      },
+    });
+    const waited = await organiser.derived.waitFor.query({ cursor, timeout: 10_000 });
+    expect(waited.reached).toBe(true);
+    const { events } = await organiser.derived.events.mine.query();
+    expect(events).toEqual([
+      expect.objectContaining({
+        id: event,
+        status: "Active",
+        issued: 1,
+        metadataLocator: `https://meta.kippu.rocks/v0/events/${event}.json`,
+        metadata: expect.objectContaining({ name: "Opening night" }),
+      }),
+    ]);
 
     // Every write Kippu relayed for the organiser is attributed to their session (NFR-7):
     // the account's registration, the event's creation and the issuance.

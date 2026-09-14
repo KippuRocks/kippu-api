@@ -244,7 +244,15 @@ jobs:
             -e KIPPU_LEDGER_ENVIRONMENT \
             kippu-api:ci
           for _ in $(seq 1 30); do
-            if curl -fsS http://127.0.0.1:8080/health; then exit 0; fi
+            if curl -fsS http://127.0.0.1:8080/health; then
+              # The domain services answer too: a call through tRPC reaches the store.
+              curl -fsS -X POST -H 'content-type: application/json' \
+                -d '{"email":"ci@organiser.example"}' \
+                http://127.0.0.1:8080/v0/trpc/auth.organiser.beginSignUp | grep -F '"ceremonyId"' \
+                && exit 0
+              docker logs kippu-api
+              exit 1
+            fi
             sleep 1
           done
           docker logs kippu-api
