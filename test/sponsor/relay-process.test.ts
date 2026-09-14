@@ -23,6 +23,7 @@ const base = {
   KIPPU_SPONSOR_SOFTWARE_SECRET_KEY: SECRET,
   KIPPU_SPONSOR_REGISTRATIONS_PER_WINDOW: "3",
   KIPPU_SPONSOR_REGISTRATION_WINDOW_SECONDS: "3600",
+  KIPPU_SPONSOR_LAG_WAIT_MS: "5000",
 };
 
 describe("sponsor relay configuration", () => {
@@ -34,6 +35,7 @@ describe("sponsor relay configuration", () => {
       port: 9200,
       derivedDatabaseUrl: base.KIPPU_SPONSOR_DERIVED_DATABASE_URL,
       registrationRateLimit: { registrations: 3, window: 3_600_000 },
+      lagWait: 5000,
     });
     expect(Buffer.from(config.softwareSecretKey).toString("hex")).toBe(SECRET);
     expect(loadSponsorRelayConfig(base).port).toBe(8082);
@@ -140,6 +142,7 @@ describeWithStore("sponsor relay with the derived copy", () => {
       sponsor,
       derived,
       entitlements: createEntitlements({ derived: derived.queries, registrationRateLimit }),
+      lagWait: 1_000,
     });
     try {
       const response = await relay.inject({ method: "GET", url: "/health" });
@@ -207,6 +210,7 @@ describeWithStore("sponsor relay with the derived copy", () => {
       sponsor: kmsP256Signer(softwareKmsP256Key()),
       derived: unreachable,
       entitlements: createEntitlements({ derived: unreachable.queries, registrationRateLimit }),
+      lagWait: 1_000,
     });
     try {
       const response = await relay.inject({ method: "GET", url: "/health" });

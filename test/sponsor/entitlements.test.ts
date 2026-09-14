@@ -119,6 +119,7 @@ describeWithStore("entitlements (F-023 plan §5.3)", () => {
         registrationRateLimit: { registrations: 2, window: 60_000 },
         now: () => clock,
       }),
+      lagWait: 1_000,
     });
   });
 

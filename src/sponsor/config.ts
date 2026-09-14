@@ -36,6 +36,12 @@ export interface SponsorRelayConfig {
    * default: a deployment chooses them.
    */
   readonly registrationRateLimit: { readonly registrations: number; readonly window: number };
+  /**
+   * The longest a request naming a receipt cursor waits for the derived copy to
+   * reach it, in ms (`F-023` plan §5.3, `NFR-11`). No default: the plan sets
+   * none.
+   */
+  readonly lagWait: number;
 }
 
 function present(value: string | undefined): value is string {
@@ -143,5 +149,6 @@ export function loadSponsorRelayConfig(env: Environment = process.env): SponsorR
           env.KIPPU_SPONSOR_REGISTRATION_WINDOW_SECONDS,
         ) * 1000,
     },
+    lagWait: readPositiveInteger("KIPPU_SPONSOR_LAG_WAIT_MS", env.KIPPU_SPONSOR_LAG_WAIT_MS),
   };
 }
