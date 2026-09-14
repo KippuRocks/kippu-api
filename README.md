@@ -125,6 +125,22 @@ Writes Kippu never sees, sent directly by Saifu and Iriguchi, are covered by the
 - The submission returned to the caller settles or is rejected only after the row records the outcome: `settled` with the receipt's cursor, `rejected` with the §10 code, or `failed`.
 - Integration tests of relaying features assert coverage with `expectEveryRelayedWriteAudited` (`test/support/ledger.ts`).
 
+### The SDK factory (`NFR-6`)
+
+`makeTicketto({ environment, holderRpId, sponsor, operationLifetime })`
+(`src/ledger/ticketto.ts`) is the only place kippu-api constructs the Ticketto SDK.
+
+- **Backend.** In `development` and `test` the backend is `backend-memory`. In `production` the factory refuses until `binding-offchain` implements the backend port; its configuration will be the ledger service's endpoint, never credentials for its store (`REQ-SDK-9`).
+- **Profile.** The profile is `profile-v0` with the holder RP id.
+- **Callers supply the rest.** The sponsor is `F-023`'s client, and the signer is resolved per request (`F-021`). `AD-15` sets no default operation lifetime, so the caller passes one.
+- **The `NFR-6` allow-list** (`src/ledger/allow-list.ts`) names every field a command input may carry, down to nested objects.
+  - A field outside it fails type-checking, even when it arrives in a variable.
+  - It is also refused at runtime, before anything is signed.
+  - A field added to the SDK surface fails type-checking in the allow-list until someone reviews and lists it.
+- **Errors.** `unwrap(result)` turns an SDK result's §10 code into the tRPC error clients read. Any internal error reaches the client as `internal error`, with no message and no stack; the server logs it.
+
+`@ticketto/sdk`, `profile-v0`, `ledger-rules` and `backend-memory` are vendored from the libticketto commit in `vendor/libticketto/source.json` (`pnpm vendor:libticketto <commit>`).
+
 ### Package releases
 
 Package versions are managed with Changesets (`pnpm changeset`). Nothing is

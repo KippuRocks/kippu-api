@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Vendors @ticketto/sdk and @ticketto/profile-v0 from a pinned libticketto commit, as
+# Vendors @ticketto/sdk, profile-v0, ledger-rules and backend-memory from a pinned libticketto commit, as
 # ticketto-offchain does (tools/vendor-libticketto.sh there).
 #
 #   scripts/vendor-libticketto.sh <commit>   build and pack the packages at <commit> into
@@ -15,7 +15,7 @@ set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 out="$root/vendor/libticketto"
 repository="https://github.com/KippuRocks/libticketto.git"
-packages=(sdk profile-v0)
+packages=(sdk profile-v0 ledger-rules backend-memory)
 
 mode=vendor
 if [[ "${1:-}" == "--check" ]]; then
@@ -42,7 +42,7 @@ resolved=$(git -C "$work/src" rev-parse HEAD)
 
 (
   cd "$work/src"
-  pnpm install --frozen-lockfile --filter "@ticketto/profile-v0..." >/dev/null
+  pnpm install --frozen-lockfile --filter "@ticketto/backend-memory..." >/dev/null
   for package in "${packages[@]}"; do
     pnpm --filter "@ticketto/$package" build >/dev/null
   done

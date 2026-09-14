@@ -5,6 +5,8 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
+  '@ticketto/backend-memory': file:vendor/libticketto/ticketto-backend-memory-0.0.0.tgz
+  '@ticketto/ledger-rules': file:vendor/libticketto/ticketto-ledger-rules-0.0.0.tgz
   '@ticketto/profile-v0': file:vendor/libticketto/ticketto-profile-v0-0.0.0.tgz
   '@ticketto/sdk': file:vendor/libticketto/ticketto-sdk-0.0.0.tgz
 
@@ -21,6 +23,9 @@ importers:
       '@simplewebauthn/server':
         specifier: 14.0.2
         version: 14.0.2
+      '@ticketto/backend-memory':
+        specifier: file:vendor/libticketto/ticketto-backend-memory-0.0.0.tgz
+        version: file:vendor/libticketto/ticketto-backend-memory-0.0.0.tgz
       '@ticketto/profile-v0':
         specifier: file:vendor/libticketto/ticketto-profile-v0-0.0.0.tgz
         version: file:vendor/libticketto/ticketto-profile-v0-0.0.0.tgz
@@ -535,13 +540,23 @@ packages:
     resolution: {integrity: sha512-CgB6HHWer/vrKps24ulRIbpcpb7K4xAU7SkZ7YHzBPlwHsvsrCJFEXK421s+cJzX+ZrqtA/TuU5w1HzI7k9N8A==}
     engines: {node: '>=18.0.0'}
 
+  '@ticketto/backend-memory@file:vendor/libticketto/ticketto-backend-memory-0.0.0.tgz':
+    resolution: {integrity: sha512-3Wts1kvSyXGXP97c5dmB1SXGFbE+R3IMmzQO8kTm76I0QHxDYF2/FT6mkLeSLAo/EV4cBF3t8ErN4w0xESKAng==, tarball: file:vendor/libticketto/ticketto-backend-memory-0.0.0.tgz}
+    version: 0.0.0
+    engines: {node: '>=24'}
+
+  '@ticketto/ledger-rules@file:vendor/libticketto/ticketto-ledger-rules-0.0.0.tgz':
+    resolution: {integrity: sha512-ZCMIfbJ/Re+3NDTSZcKorCZD0k3KXsu69ePVuJRuGHsWfgACya2IHeJYHH7W/0B8F1nhC351+Jd0vez85MTXmw==, tarball: file:vendor/libticketto/ticketto-ledger-rules-0.0.0.tgz}
+    version: 0.0.0
+    engines: {node: '>=24'}
+
   '@ticketto/profile-v0@file:vendor/libticketto/ticketto-profile-v0-0.0.0.tgz':
-    resolution: {integrity: sha512-VenqPGpnmfhHwo+bxB7BQ2BByM64xgdpl7DkRfP3xbGlTlMzT9gGX6u4S9IZ0oZXyNz+N7giOFNYJIR0BbBwrA==, tarball: file:vendor/libticketto/ticketto-profile-v0-0.0.0.tgz}
+    resolution: {integrity: sha512-i+rdFkBu/7Pcrl4RLe9lnV5zeYBH5VGSNRuOwnVgRUBwP4O4eTTfIQuc1RYsFer6wT5kWSp7bQZqTHn9w+Mxkw==, tarball: file:vendor/libticketto/ticketto-profile-v0-0.0.0.tgz}
     version: 0.0.0
     engines: {node: '>=24'}
 
   '@ticketto/sdk@file:vendor/libticketto/ticketto-sdk-0.0.0.tgz':
-    resolution: {integrity: sha512-8s0s1qKZ6UgRB7GWCgzq+1U4HfkbemIPrOIZlgsuDbgS0Sj2AsS8nSkc4LVHTWFkgeIuAtLL3WwVtsLe3ICHJg==, tarball: file:vendor/libticketto/ticketto-sdk-0.0.0.tgz}
+    resolution: {integrity: sha512-LgVMV7hXMVqOexOxyWPwKm3fmJSyJaOlyk9V18JQdgkR2WV1ITAbEqPl24hOtV/WgLCTtInTqidcL9p2ukQS5Q==, tarball: file:vendor/libticketto/ticketto-sdk-0.0.0.tgz}
     version: 0.0.0
     engines: {node: '>=24'}
 
@@ -1832,6 +1847,16 @@ snapshots:
   '@smithy/types@4.18.0':
     dependencies:
       tslib: 2.8.1
+
+  '@ticketto/backend-memory@file:vendor/libticketto/ticketto-backend-memory-0.0.0.tgz':
+    dependencies:
+      '@ticketto/ledger-rules': file:vendor/libticketto/ticketto-ledger-rules-0.0.0.tgz
+      '@ticketto/sdk': file:vendor/libticketto/ticketto-sdk-0.0.0.tgz
+
+  '@ticketto/ledger-rules@file:vendor/libticketto/ticketto-ledger-rules-0.0.0.tgz':
+    dependencies:
+      '@ticketto/profile-v0': file:vendor/libticketto/ticketto-profile-v0-0.0.0.tgz
+      '@ticketto/sdk': file:vendor/libticketto/ticketto-sdk-0.0.0.tgz
 
   '@ticketto/profile-v0@file:vendor/libticketto/ticketto-profile-v0-0.0.0.tgz':
     dependencies:

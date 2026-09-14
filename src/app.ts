@@ -1,6 +1,10 @@
-import type { AnyTRPCRouter } from "@trpc/server";
+import type { AnyTRPCRouter, TRPCError } from "@trpc/server";
 import { fastifyTRPCPlugin } from "@trpc/server/adapters/fastify";
-import Fastify, { type FastifyInstance, type FastifyServerOptions } from "fastify";
+import Fastify, {
+  type FastifyInstance,
+  type FastifyRequest,
+  type FastifyServerOptions,
+} from "fastify";
 import type { Services } from "./auth/ports.js";
 import { makeCreateContext } from "./trpc/fastify-context.js";
 import { appRouter } from "./trpc/router.js";
@@ -32,7 +36,23 @@ export function buildApp(
 
   app.register(fastifyTRPCPlugin, {
     prefix: TRPC_PREFIX,
-    trpcOptions: { router: trpcRouter, createContext: makeCreateContext(services) },
+    trpcOptions: {
+      router: trpcRouter,
+      createContext: makeCreateContext(services),
+      onError({
+        error,
+        path,
+        req,
+      }: {
+        error: TRPCError;
+        path?: string | undefined;
+        req: FastifyRequest;
+      }) {
+        if (error.code === "INTERNAL_SERVER_ERROR") {
+          req.log.error({ err: error.cause ?? error, path }, "procedure failed");
+        }
+      },
+    },
   });
 
   return app;
