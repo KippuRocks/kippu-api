@@ -38,6 +38,10 @@ jobs:
       KIPPU_LOGIN_ORIGINS: https://ibento.login.kippu.example
       KIPPU_HOLDER_RP_ID: holder.kippu.example
       KIPPU_TEST_DATABASE_URL: postgres://kippu_api:kippu_api_ci@127.0.0.1:5432/kippu_api
+      # Metadata object storage: a MinIO stand-in (F-026). No provider is chosen yet.
+      KIPPU_TEST_S3_ENDPOINT: http://127.0.0.1:9000
+      KIPPU_TEST_S3_ACCESS_KEY_ID: kippu_metadata
+      KIPPU_TEST_S3_SECRET_ACCESS_KEY: kippu_metadata_ci
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -45,6 +49,18 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
+      # A service container cannot be given MinIO's `server` command, so it is started here.
+      - name: Start the metadata object storage stand-in (MinIO)
+        run: |
+          docker run -d --name kippu-metadata-storage -p 9000:9000 \
+            -e MINIO_ROOT_USER=kippu_metadata -e MINIO_ROOT_PASSWORD=kippu_metadata_ci \
+            quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z server /data
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:9000/minio/health/live; then exit 0; fi
+            sleep 1
+          done
+          docker logs kippu-metadata-storage
+          exit 1
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm typecheck
@@ -62,6 +78,29 @@ jobs:
             echo "the lint accepted a schema with a deny-listed field" >&2
             exit 1
           fi
+      - name: Schemas are published and fetched cross-origin, with no credentials, from the built edge
+        env:
+          KIPPU_METADATA_S3_BUCKET: kippu-metadata
+          KIPPU_METADATA_S3_ENDPOINT: http://127.0.0.1:9000
+          KIPPU_METADATA_S3_FORCE_PATH_STYLE: "true"
+          KIPPU_METADATA_S3_ACCESS_KEY_ID: kippu_metadata
+          KIPPU_METADATA_S3_SECRET_ACCESS_KEY: kippu_metadata_ci
+          KIPPU_METADATA_EDGE_PORT: "8081"
+        run: |
+          docker exec kippu-metadata-storage sh -c \
+            'mc alias set local http://127.0.0.1:9000 kippu_metadata kippu_metadata_ci && mc mb local/kippu-metadata'
+          pnpm metadata:publish-schemas
+          pnpm metadata:edge &
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8081/health >/dev/null; then break; fi
+            sleep 1
+          done
+          curl -fsS -D headers.txt -o event.json -H "Origin: https://any-ticketto-client.example" \
+            http://127.0.0.1:8081/v0/schemas/event/1.0.json
+          cat headers.txt
+          grep -iFx "access-control-allow-origin: *" <(tr -d '\r' < headers.txt)
+          if grep -iq "access-control-allow-credentials" headers.txt; then exit 1; fi
+          cmp event.json packages/metadata-schema/schemas/event/1.0.json
       - name: Health endpoint answers from the built server
         run: |
           PORT=8080 node dist/server.js &

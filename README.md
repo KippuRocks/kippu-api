@@ -71,6 +71,31 @@ here is authoritative for a Ticketto fact (`REQ-IX-1`).
   `KIPPU_TEST_DATABASE_URL`. Without it they are skipped locally; in CI they
   may not be.
 
+### Metadata storage and serving
+
+Event and class documents, the schemas they declare, and the images they reference are public objects (`F-026` §5.3, `REQ-MD-4`). They are addressed at `https://meta.kippu.rocks` (`AD-22`): the `KIPPU_METADATA_PUBLIC_URL` setting, which defaults to it. A URL's path under that origin is the object's key, so `https://meta.kippu.rocks/v0/schemas/event/1.0.json` is stored at `v0/schemas/event/1.0.json`.
+
+**Nothing real exists yet.** No object store, CDN, DNS record or bucket has been created. The pieces below are local stand-ins, each behind a seam a real provider plugs into:
+
+- **Object storage.** `src/metadata/storage.ts` speaks S3 to any S3-compatible store. Locally and in CI that store is MinIO. A provider is configured through the same `KIPPU_METADATA_S3_*` keys. Every object is stored with its `Content-Type` and `Cache-Control`.
+- **CDN.** `src/metadata/edge.ts` (`pnpm metadata:edge`) stands in for the CDN. It serves objects with no authentication and open CORS (`Access-Control-Allow-Origin: *`, never credentials). It sends `Cache-Control: public, max-age=60`, so an edit is visible within a minute, plus `ETag` revalidation, and refuses writes. A real CDN in front of the bucket must be configured to behave the same way. The bucket itself stays private.
+- **Schemas.** `pnpm metadata:publish-schemas` stores every schema file of `@kippu/metadata-schema`, byte for byte, at the key its `$id` names.
+
+```sh
+pnpm store:up    # also starts MinIO on 127.0.0.1:59000, with the kippu-metadata bucket
+export KIPPU_TEST_S3_ENDPOINT=http://127.0.0.1:59000
+export KIPPU_TEST_S3_ACCESS_KEY_ID=kippu_metadata KIPPU_TEST_S3_SECRET_ACCESS_KEY=kippu_metadata_local
+export KIPPU_METADATA_S3_BUCKET=kippu-metadata KIPPU_METADATA_S3_ENDPOINT=$KIPPU_TEST_S3_ENDPOINT
+export KIPPU_METADATA_S3_FORCE_PATH_STYLE=true
+export KIPPU_METADATA_S3_ACCESS_KEY_ID=$KIPPU_TEST_S3_ACCESS_KEY_ID
+export KIPPU_METADATA_S3_SECRET_ACCESS_KEY=$KIPPU_TEST_S3_SECRET_ACCESS_KEY
+pnpm build && pnpm metadata:publish-schemas
+pnpm metadata:edge   # serves on $KIPPU_METADATA_EDGE_HOST:$KIPPU_METADATA_EDGE_PORT, default 0.0.0.0:8081
+curl -i -H "Origin: https://any.example" http://127.0.0.1:8081/v0/schemas/event/1.0.json
+```
+
+Object storage tests create a bucket of their own per file on `KIPPU_TEST_S3_ENDPOINT`. Without it they are skipped locally; in CI they may not be. CI also publishes the schemas from the built output and fetches one cross-origin through the built edge.
+
 ### Organiser and operator sessions
 
 - **Organisers** sign up with an email and one passkey, then sign in with that passkey.
