@@ -101,5 +101,10 @@ export function memoryMetadataStorage(): MetadataStorage {
         ? null
         : { head: object.head, body: Readable.from([Buffer.from(object.bytes)]) };
     },
+    async *list(prefix) {
+      for (const key of [...objects.keys()].sort()) {
+        if (key.startsWith(prefix)) yield key;
+      }
+    },
   };
 }

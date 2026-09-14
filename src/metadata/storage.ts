@@ -14,6 +14,7 @@ import type { Readable } from "node:stream";
 import {
   GetObjectCommand,
   HeadObjectCommand,
+  ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
   S3ServiceException,
@@ -50,6 +51,8 @@ export interface MetadataStorage {
   head(key: string): Promise<ObjectHead | null>;
   /** The object, or `null` when there is no object at `key`. */
   get(key: string): Promise<StoredObject | null>;
+  /** The key of every object whose key starts with `prefix`, in key order. */
+  list(prefix: string): AsyncIterable<string>;
 }
 
 /**
@@ -137,6 +140,19 @@ export function createS3MetadataStorage(config: ObjectStorageConfig): MetadataSt
         if (statusOf(error) === 404) return null;
         throw error;
       }
+    },
+
+    async *list(prefix) {
+      let token: string | undefined;
+      do {
+        const page = await client.send(
+          new ListObjectsV2Command({ Bucket, Prefix: prefix, ContinuationToken: token }),
+        );
+        for (const object of page.Contents ?? []) {
+          if (object.Key !== undefined) yield object.Key;
+        }
+        token = page.IsTruncated === true ? page.NextContinuationToken : undefined;
+      } while (token !== undefined);
     },
   };
 }

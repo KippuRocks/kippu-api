@@ -11,6 +11,7 @@ import { ownedEvent } from "../events/ownership.js";
 import type { KippuTicketto } from "../ledger/ticketto.js";
 import type { Store } from "../store/store.js";
 import type { Metadata, MetadataDocument, WrittenDocument } from "./ports.js";
+import { foreignReferences } from "./self-contained.js";
 import type { MetadataStorage } from "./storage.js";
 import { createDocumentValidator, type DocumentValidator } from "./validation.js";
 
@@ -52,7 +53,9 @@ function declaredSchema(document: MetadataDocument, kind: "event" | "class"): st
  * An edit validates the whole document against the schema it declares, and
  * stores it at the document's locator, replacing what was there. That is all
  * it does: no SDK command exists in this path, so no ledger write occurs
- * (`AC-A3.1`), and the locator on the ledger never changes (`REQ-MD-1`).
+ * (`AC-A3.1`), and the locator on the ledger never changes (`REQ-MD-1`). A
+ * document holding a URL not served from the metadata origin — a Kippu API URL
+ * among them — is refused, so documents stay relocatable (`F-026` plan §5.3).
  */
 export function createMetadataDocuments(options: MetadataDocumentsOptions): Metadata {
   const { store, storage, ledger, authority } = options;
@@ -68,6 +71,15 @@ export function createMetadataDocuments(options: MetadataDocumentsOptions): Meta
     if (!validation.valid) {
       throw new RefusedRequest(
         `the document does not conform to ${schemaId}: ${validation.errors.join("; ")}`,
+      );
+    }
+    // Relocatable by moving files: every URL is served from the same storage (REQ-MD-1).
+    const foreign = foreignReferences(document, origin);
+    if (foreign.length > 0) {
+      throw new RefusedRequest(
+        `a document references only URLs under ${origin}: ${foreign
+          .map(({ pointer, url }) => `${pointer} is ${url}`)
+          .join("; ")}`,
       );
     }
     const bytes = new TextEncoder().encode(JSON.stringify(document));
