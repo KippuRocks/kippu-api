@@ -18,6 +18,7 @@ packages for clients live beside it under `packages/`:
 | Package | What it is |
 |---|---|
 | `@kippu/api` (`packages/api`) | Types of the tRPC router — contract `C5`. Declarations only |
+| `@kippu/metadata-schema` (`packages/metadata-schema`) | JSON Schemas for the public metadata documents — contract `C6` — and the personal-data field lint |
 
 ## Development
 
@@ -30,15 +31,16 @@ pnpm typecheck
 pnpm test        # Vitest
 pnpm build       # emits dist/
 pnpm start       # serves on $HOST:$PORT, default 0.0.0.0:8080
-pnpm check:contract  # a client fixture installs the packed @kippu/api and compiles against it
+pnpm lint:personal-data  # no metadata schema declares a personal-data field (after build)
+pnpm check:contract  # a client fixture installs the packed packages and compiles against them
 ```
 
 ### Package releases
 
 Package versions are managed with Changesets (`pnpm changeset`). Nothing is
 published yet — the registry decision is pending. `pnpm check:contract` packs
-`@kippu/api` and installs the tarball into `fixtures/client` outside the
-workspace, the way a client repository would.
+`@kippu/api` and `@kippu/metadata-schema` and installs the tarballs into
+`fixtures/client` outside the workspace, the way a client repository would.
 
 `GET /health` answers `{"status":"ok"}`. It is an operational endpoint, outside any versioned API prefix, and not part of the `C5` contract.
 

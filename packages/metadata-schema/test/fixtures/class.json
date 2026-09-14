@@ -1,0 +1,8 @@
+{
+  "$schema": "https://meta.kippu.rocks/v0/schemas/class/1.0.json",
+  "classId": "0a1b2c3d",
+  "eventId": "5f1d3c0a9b8e7d6c5b4a39281706f5e4d3c2b1a09f8e7d6c5b4a392817060504",
+  "name": "Press",
+  "description": "Accredited press.",
+  "entitlements": ["Entry to the press area"]
+}

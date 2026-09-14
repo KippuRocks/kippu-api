@@ -1,0 +1,38 @@
+{
+  "$schema": "https://meta.kippu.rocks/v0/schemas/event/1.0.json",
+  "eventId": "5f1d3c0a9b8e7d6c5b4a39281706f5e4d3c2b1a09f8e7d6c5b4a392817060504",
+  "name": "Autumn Night Concert",
+  "description": "An evening of chamber music.",
+  "organiser": { "tradingName": "Sala Norte Productions" },
+  "venue": {
+    "name": "Sala Norte",
+    "address": {
+      "streetAddress": "Calle Mayor 1",
+      "locality": "Madrid",
+      "postalCode": "28013",
+      "country": "ES"
+    }
+  },
+  "schedule": {
+    "timeZone": "Europe/Madrid",
+    "sessions": [{ "startsAt": "2026-10-31T20:00:00+01:00", "endsAt": "2026-10-31T22:30:00+01:00" }]
+  },
+  "imagery": [
+    {
+      "url": "https://meta.kippu.rocks/v0/images/autumn-night.jpg",
+      "alt": "The stage at Sala Norte",
+      "mediaType": "image/jpeg"
+    }
+  ],
+  "zones": {
+    "01": { "name": "Stalls" },
+    "02": { "name": "Standing", "description": "General admission" }
+  },
+  "seatMaps": [
+    {
+      "url": "https://meta.kippu.rocks/v0/images/sala-norte-stalls.svg",
+      "mediaType": "image/svg+xml",
+      "zones": ["01"]
+    }
+  ]
+}
