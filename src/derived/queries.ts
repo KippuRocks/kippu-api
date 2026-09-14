@@ -17,6 +17,7 @@ import type {
   ZoneId,
 } from "@ticketto/sdk";
 import type { Store } from "../store/store.js";
+import { type CopyFreshness, freshnessOf, HEAD_SQL, type HeadColumns } from "./freshness.js";
 
 /**
  * A ledger fact as Kippu's derived copy holds it. Never authoritative
@@ -39,14 +40,23 @@ export interface Attendance {
   readonly lastRecordedAt: Timestamp;
 }
 
+/**
+ * A read response: the result, and how far the copy had read the log when it
+ * was read — in the same statement, so the two always agree (`NFR-11`).
+ */
+export interface DerivedRead<T> {
+  readonly result: T;
+  readonly freshness: CopyFreshness;
+}
+
 /** Reads the projections: events, tickets, holdings and attendance. */
 export interface DerivedQueries {
-  event(id: EventId): Promise<Projected<LedgerEvent> | null>;
-  ticket(id: TicketId): Promise<Projected<Ticket> | null>;
+  event(id: EventId): Promise<DerivedRead<Projected<LedgerEvent> | null>>;
+  ticket(id: TicketId): Promise<DerivedRead<Projected<Ticket> | null>>;
   /** Every ticket an account holds, ordered by event, then ticket. */
-  holdings(account: AccountId): Promise<readonly Projected<Ticket>[]>;
+  holdings(account: AccountId): Promise<DerivedRead<readonly Projected<Ticket>[]>>;
   /** A ticket's recorded attendances; `null` before its first. */
-  attendance(ticket: TicketId): Promise<Projected<Attendance> | null>;
+  attendance(ticket: TicketId): Promise<DerivedRead<Projected<Attendance> | null>>;
 }
 
 interface EventRow {
@@ -154,54 +164,88 @@ function ticketOf(row: TicketRow): Projected<Ticket> {
   );
 }
 
-const TICKET_COLUMNS = `id, event_id, holder, class_id, provenance, zone_id, placement_kind, position,
-  discriminator, policy_kind, policy_max, policy_until, cannot_resale, cannot_transfer, attendances,
-  sequence`;
+const TICKET_COLUMNS = `t.id, t.event_id, t.holder, t.class_id, t.provenance, t.zone_id,
+  t.placement_kind, t.position, t.discriminator, t.policy_kind, t.policy_max, t.policy_until,
+  t.cannot_resale, t.cannot_transfer, t.attendances, t.sequence`;
+
+/** Nullable projection columns, joined onto the head so a miss still says how fresh it is. */
+type Joined<Row> = HeadColumns & { [Column in keyof Row]: Row[Column] | null };
+
+/**
+ * Runs `sql` — the head, `LEFT JOIN`ed with a projection on `id` — and answers
+ * with its rows (none when the join found nothing) and the freshness.
+ */
+async function read<Row>(
+  store: Store,
+  sql: string,
+  values: readonly unknown[],
+): Promise<{ rows: Row[]; freshness: CopyFreshness }> {
+  const result = await store.query<Joined<Row & { id: string }>>(
+    `WITH head AS (${HEAD_SQL}) ${sql}`,
+    values as unknown[],
+  );
+  const first = result.rows[0];
+  if (first === undefined) {
+    throw new Error("the derived reader's cursor row is missing; is the store migrated?");
+  }
+  const rows = result.rows.filter((row) => row.id !== null) as unknown as Row[];
+  return { rows, freshness: freshnessOf(first) };
+}
 
 export function createDerivedQueries(store: Store): DerivedQueries {
   return {
     async event(id) {
-      const result = await store.query<EventRow>(
-        `SELECT id, owner, status, max_capacity, issued, zones, sequence
-         FROM derived_events WHERE id = $1`,
+      const { rows, freshness } = await read<EventRow>(
+        store,
+        `SELECT head.*, e.id, e.owner, e.status, e.max_capacity, e.issued, e.zones, e.sequence
+         FROM head LEFT JOIN derived_events e ON e.id = $1`,
         [id],
       );
-      const row = result.rows[0];
-      return row === undefined ? null : eventOf(row);
+      const row = rows[0];
+      return { result: row === undefined ? null : eventOf(row), freshness };
     },
     async ticket(id) {
-      const result = await store.query<TicketRow>(
-        `SELECT ${TICKET_COLUMNS} FROM derived_tickets WHERE id = $1`,
+      const { rows, freshness } = await read<TicketRow>(
+        store,
+        `SELECT head.*, ${TICKET_COLUMNS} FROM head LEFT JOIN derived_tickets t ON t.id = $1`,
         [id],
       );
-      const row = result.rows[0];
-      return row === undefined ? null : ticketOf(row);
+      const row = rows[0];
+      return { result: row === undefined ? null : ticketOf(row), freshness };
     },
     async holdings(account) {
-      const result = await store.query<TicketRow>(
-        `SELECT ${TICKET_COLUMNS} FROM derived_tickets WHERE holder = $1 ORDER BY event_id, id`,
+      const { rows, freshness } = await read<TicketRow>(
+        store,
+        `SELECT head.*, ${TICKET_COLUMNS} FROM head LEFT JOIN derived_tickets t ON t.holder = $1
+         ORDER BY t.event_id, t.id`,
         [account],
       );
-      return result.rows.map(ticketOf);
+      return { result: rows.map(ticketOf), freshness };
     },
     async attendance(ticket) {
-      const result = await store.query<AttendanceRow>(
-        `SELECT ticket_id, event_id, count, last_recorded_at, sequence
-         FROM derived_attendance WHERE ticket_id = $1`,
+      const { rows, freshness } = await read<AttendanceRow & { id: string }>(
+        store,
+        `SELECT head.*, a.ticket_id AS id, a.ticket_id, a.event_id, a.count, a.last_recorded_at,
+           a.sequence
+         FROM head LEFT JOIN derived_attendance a ON a.ticket_id = $1`,
         [ticket],
       );
-      const row = result.rows[0];
-      return row === undefined
-        ? null
-        : projected(
-            {
-              event: row.event_id as EventId,
-              ticket: row.ticket_id as TicketId,
-              count: int(row.count),
-              lastRecordedAt: int(row.last_recorded_at),
-            },
-            row.sequence,
-          );
+      const row = rows[0];
+      return {
+        result:
+          row === undefined
+            ? null
+            : projected(
+                {
+                  event: row.event_id as EventId,
+                  ticket: row.ticket_id as TicketId,
+                  count: int(row.count),
+                  lastRecordedAt: int(row.last_recorded_at),
+                },
+                row.sequence,
+              ),
+        freshness,
+      };
     },
   };
 }
