@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Lint, typecheck, test, build (Node 24)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+      - name: Health endpoint answers from the built server
+        run: |
+          PORT=8080 node dist/server.js &
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8080/health; then exit 0; fi
+            sleep 1
+          done
+          echo "health endpoint did not answer" >&2
+          exit 1
+
+  image:
+    name: Container image (built, never pushed)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: false
+          load: true
+          tags: kippu-api:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Health endpoint answers from the container
+        run: |
+          docker run -d --name kippu-api -p 8080:8080 kippu-api:ci
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8080/health; then exit 0; fi
+            sleep 1
+          done
+          docker logs kippu-api
+          echo "health endpoint did not answer" >&2
+          exit 1
