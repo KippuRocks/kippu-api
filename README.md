@@ -86,6 +86,9 @@ Kippu sponsors every ledger write (`REQ-SP-1`, `AD-18` A) through a relay that r
   - an access pass whose ticket exists and whose event is neither `Cancelled` nor `Finished`.
 
   Anything else is `403 ERR-SponsorshipRefused`. The plan sets no numbers for the registration rate limit, so both `KIPPU_SPONSOR_REGISTRATIONS_PER_WINDOW` and `KIPPU_SPONSOR_REGISTRATION_WINDOW_SECONDS` are required.
+- **Lag.** The derived copy trails the ledger (`NFR-11`), so it can wrongly refuse an entitled input, but never wrongly grant one. A request may add `"after": "<cursor>"`, the receipt cursor of the write that gave rise to the entitlement, such as the issuance or transfer of the ticket. If the relay refuses, it waits up to `KIPPU_SPONSOR_LAG_WAIT_MS` (required, no default) for the copy to reach that cursor, then decides again.
+  - If the copy still has not reached the cursor, the answer is `503 lagging` with `Retry-After`, never a refusal (`REQ-SP-5`).
+  - A refusal from a copy that already reflects the cursor is final.
 - **Where it listens.** `KIPPU_SPONSOR_HOST` and `KIPPU_SPONSOR_PORT` set the address, by default `0.0.0.0:8082`. `GET /health` answers only while the derived copy can be read, and reports the sponsor account and how far the copy has read the log.
 
 ```sh
@@ -94,6 +97,7 @@ KIPPU_SPONSOR_ENVIRONMENT=development \
 KIPPU_SPONSOR_DERIVED_DATABASE_URL=postgres://kippu_sponsor_relay:local@127.0.0.1:54329/kippu_api \
 KIPPU_SPONSOR_SOFTWARE_SECRET_KEY=$(openssl rand -hex 32) \
 KIPPU_SPONSOR_REGISTRATIONS_PER_WINDOW=5 KIPPU_SPONSOR_REGISTRATION_WINDOW_SECONDS=3600 \
+KIPPU_SPONSOR_LAG_WAIT_MS=5000 \
 KIPPU_DATABASE_URL= pnpm sponsor:start
 ```
 

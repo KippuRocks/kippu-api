@@ -12,9 +12,11 @@
  * never treats them as authoritative: the ledger's rules still decide every
  * write (`REQ-IX-1`).
  */
+import type { Cursor } from "@ticketto/sdk";
 import pg from "pg";
 import {
   type CopyFreshness,
+  createFreshness,
   freshnessOf,
   HEAD_SQL,
   type HeadColumns,
@@ -25,6 +27,8 @@ export interface RelayDerivedCopy {
   readonly queries: DerivedQueries;
   /** How far the copy has read the ledger's log. */
   current(): Promise<CopyFreshness>;
+  /** Resolves `true` once the copy reflects the record at `cursor`, or `false` after `timeout` ms. */
+  waitFor(cursor: Cursor, timeout: number): Promise<boolean>;
   close(): Promise<void>;
 }
 
@@ -34,14 +38,19 @@ export function connectRelayDerivedCopy(databaseUrl: string): RelayDerivedCopy {
     application_name: "kippu-sponsor-relay",
     options: "-c default_transaction_read_only=on",
   });
+  const freshness = createFreshness({ store: pool });
   return {
     queries: createDerivedQueries(pool),
+    waitFor: (cursor, timeout) => freshness.waitFor(cursor, timeout),
     async current() {
       const result = await pool.query<HeadColumns>(HEAD_SQL);
       const row = result.rows[0];
       if (row === undefined) throw new Error("the derived copy has no reader position");
       return freshnessOf(row);
     },
-    close: () => pool.end(),
+    async close() {
+      await freshness.close();
+      await pool.end();
+    },
   };
 }

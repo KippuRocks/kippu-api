@@ -11,7 +11,7 @@
  */
 import { issueSponsorship, type SponsoredInput } from "@kippu/sponsorship";
 import { decodeSignedAccessPass, decodeSignedCommand } from "@ticketto/profile-v0";
-import type { Result, Signer } from "@ticketto/sdk";
+import type { Cursor, Result, Signer } from "@ticketto/sdk";
 import Fastify, { type FastifyInstance, type FastifyServerOptions } from "fastify";
 import type { RelayDerivedCopy } from "./derived.js";
 import type { Entitlements } from "./entitlements.js";
@@ -21,6 +21,11 @@ export interface SponsorRelayOptions {
   readonly sponsor: Signer;
   readonly derived: RelayDerivedCopy;
   readonly entitlements: Entitlements;
+  /**
+   * The longest a request waits for the derived copy to reach the cursor it
+   * names in `after`, in ms, before answering that the copy is lagging.
+   */
+  readonly lagWait: number;
 }
 
 /** Notional cost of every sponsorship until the cost table (`T-023-06`): nil under the MVP backend (`REQ-SP-1b`). */
@@ -33,6 +38,20 @@ function bytesOf(value: unknown): Uint8Array | null {
   return typeof value === "string" && HEX.test(value)
     ? Uint8Array.from(Buffer.from(value, "hex"))
     : null;
+}
+
+/** A C4 cursor: at most 128 characters from `A–Z a–z 0–9 . _ ~ -`. */
+const CURSOR = /^[A-Za-z0-9._~-]{0,128}$/;
+
+/**
+ * The cursor a request asks the relay to wait for, if any: the receipt cursor of
+ * the submitter's latest write, which gave rise to the entitlement it now uses.
+ * `undefined` when absent, `null` when malformed.
+ */
+function afterOf(body: unknown): Cursor | undefined | null {
+  if (typeof body !== "object" || body === null || !("after" in body)) return undefined;
+  const { after } = body as { after: unknown };
+  return typeof after === "string" && CURSOR.test(after) ? (after as Cursor) : null;
 }
 
 /** The signed input a request carries, as C4 frames it (`{ kind, bytes }`). */
@@ -49,7 +68,7 @@ function inputOf(body: unknown): Result<SponsoredInput> | null {
 }
 
 export function buildSponsorRelay(
-  { sponsor, derived, entitlements }: SponsorRelayOptions,
+  { sponsor, derived, entitlements, lagWait }: SponsorRelayOptions,
   options: FastifyServerOptions = {},
 ): FastifyInstance {
   const app = Fastify(options);
@@ -67,9 +86,36 @@ export function buildSponsorRelay(
     if (!input.ok) {
       return reply.code(400).send({ error: { code: "malformed", detail: input.error.detail } });
     }
+    const after = afterOf(request.body);
+    if (after === null) {
+      return reply
+        .code(400)
+        .send({ error: { code: "malformed", detail: "after must be a log cursor" } });
+    }
     let decision: Awaited<ReturnType<Entitlements["decide"]>>;
     try {
       decision = await entitlements.decide(input.value);
+      // A refusal the copy's lag may explain is retried once the copy reflects
+      // the submitter's receipt cursor, so an entitled input is never
+      // permanently refused (REQ-SP-5, NFR-11). A refusal of a copy that already
+      // reflects that cursor is final.
+      if (!decision.entitled && after !== undefined) {
+        const reached = await derived.waitFor(after, 0);
+        if (!reached) {
+          if (!(await derived.waitFor(after, lagWait))) {
+            return reply
+              .code(503)
+              .header("Retry-After", "1")
+              .send({
+                error: {
+                  code: "lagging",
+                  detail: `the derived copy has not reached cursor "${after}" yet; retry`,
+                },
+              });
+          }
+          decision = await entitlements.decide(input.value);
+        }
+      }
     } catch (error) {
       request.log.error(error, "the derived copy cannot be read");
       return reply.code(503).send({ error: { code: "unavailable" } });

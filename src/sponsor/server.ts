@@ -19,7 +19,10 @@ const entitlements = createEntitlements({
   derived: derived.queries,
   registrationRateLimit: config.registrationRateLimit,
 });
-const app = buildSponsorRelay({ sponsor, derived, entitlements }, { logger: true });
+const app = buildSponsorRelay(
+  { sponsor, derived, entitlements, lagWait: config.lagWait },
+  { logger: true },
+);
 
 const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
   app.log.info({ signal }, "shutting down");
