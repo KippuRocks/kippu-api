@@ -10,11 +10,12 @@
     "node": ">=24"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json && pnpm --filter \"./packages/**\" build",
-    "typecheck": "tsc --noEmit && pnpm --filter \"./packages/**\" typecheck",
+    "build:deps": "pnpm --filter @kippu/sponsorship build",
+    "build": "pnpm build:deps && tsc -p tsconfig.build.json && pnpm --filter \"./packages/**\" build",
+    "typecheck": "pnpm build:deps && tsc --noEmit && pnpm --filter \"./packages/**\" typecheck",
     "lint": "biome ci .",
     "format": "biome check --write .",
-    "test": "vitest run",
+    "test": "pnpm build:deps && vitest run",
     "lint:personal-data": "pnpm --filter @kippu/metadata-schema lint:personal-data",
     "check:contract": "scripts/check-api-contract.sh",
     "changeset": "changeset",
@@ -29,6 +30,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "3.1131.0",
     "@kippu/metadata-schema": "workspace:*",
+    "@kippu/sponsorship": "workspace:*",
     "@simplewebauthn/server": "14.0.2",
     "@ticketto/backend-memory": "file:vendor/libticketto/ticketto-backend-memory-0.0.0.tgz",
     "@ticketto/profile-v0": "file:vendor/libticketto/ticketto-profile-v0-0.0.0.tgz",

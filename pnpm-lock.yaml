@@ -21,6 +21,9 @@ importers:
       '@kippu/metadata-schema':
         specifier: workspace:*
         version: link:packages/metadata-schema
+      '@kippu/sponsorship':
+        specifier: workspace:*
+        version: link:packages/sponsorship
       '@simplewebauthn/server':
         specifier: 14.0.2
         version: 14.0.2

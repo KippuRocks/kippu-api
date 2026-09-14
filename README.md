@@ -146,6 +146,18 @@ Writes Kippu never sees, sent directly by Saifu and Iriguchi, are covered by the
 
 `@ticketto/sdk`, `profile-v0`, `ledger-rules` and `backend-memory` are vendored from the libticketto commit in `vendor/libticketto/source.json` (`pnpm vendor:libticketto <commit>`).
 
+### Organiser authority (`REQ-OA-1`)
+
+Kippu holds and exercises each organiser's authority over their events on the ledger; organisers never handle ledger credentials (`US-A2`). `createOrganiserAuthority` (`src/authority/authority.ts`) is the only way to sign with it.
+
+- **One `p256` key per organiser**, held in a KMS behind `OrganiserKms` (`src/authority/kms.ts`). A key is reached through `@kippu/sponsorship`'s `KmsP256Key`, as the sponsor's is. The organiser's ledger account is the key's `p256` account.
+- **No KMS provider is chosen.** In `development` and `test`, `softwareOrganiserKms` stands in: keys in process memory, lost on exit, like `backend-memory`'s ledger. In `production`, `organiserKmsFor` refuses until a provider's adapter implements `OrganiserKms`.
+- **The Kippu store holds no key material.** `organiser_ledger_accounts` keeps the key's reference in the KMS, its public key, its account and its self-registration, with the request that caused the key to be created.
+- **Provisioning is lazy.** An organiser's first write creates their key, signs its self-registration once that row exists, and relays `registerCredential` (`REQ-CP-6`) before anything else is signed.
+- **Audit before signing (`NFR-7`).** `authority.relay` goes through `relay`, so the audit row is written first. The organiser's signer then refuses to reach the KMS unless the command already has a pending audit row. A signature by an organiser's key therefore exists only with a prior audit row.
+
+`@kippu/sponsorship` is a workspace dependency of the server, so `pnpm build`, `pnpm typecheck` and `pnpm test` build it first (`pnpm build:deps`).
+
 ### Package releases
 
 Package versions are managed with Changesets (`pnpm changeset`). Nothing is
