@@ -38,6 +38,17 @@ const hex = (length: number, byte: number) => byte.toString(16).padStart(2, "0")
 /** A seat designation: variable-length bytes, carried as hex. */
 const seatLabel = (label: string) => Buffer.from(label).toString("hex") as Position;
 
+/** The projections' answers, without the freshness each read carries (see freshness.test.ts). */
+function resultsOf(store: Store) {
+  const queries = createDerivedQueries(store);
+  return {
+    event: async (id: EventId) => (await queries.event(id)).result,
+    ticket: async (id: TicketId) => (await queries.ticket(id)).result,
+    holdings: async (account: AccountId) => (await queries.holdings(account)).result,
+    attendance: async (ticket: TicketId) => (await queries.attendance(ticket)).result,
+  };
+}
+
 describeWithStore("the derived copy's projections", () => {
   let databases: TestDatabase[];
   let ledger: MemoryLedger;
@@ -146,7 +157,7 @@ describeWithStore("the derived copy's projections", () => {
     const relayed = await store.query("SELECT count(*)::int AS n FROM audit_log");
     expect(relayed.rows[0]).toEqual({ n: 0 });
 
-    const queries = createDerivedQueries(store);
+    const queries = resultsOf(store);
     const lastRecordOf = (event: EventId) => records.findLastIndex((r) => r.event?.id === event);
 
     for (const id of events) {
@@ -202,10 +213,10 @@ describeWithStore("the derived copy's projections", () => {
 
     const festival = events[1] as EventId;
     const late = await ledger.issue(festival, zoneId(0x61), 2, holders.bob);
-    expect(await createDerivedQueries(store).ticket(late)).toBeNull();
+    expect(await resultsOf(store).ticket(late)).toBeNull();
 
     expect(await copy.catchUp()).toBe(1);
-    const queries = createDerivedQueries(store);
+    const queries = resultsOf(store);
     expect((await queries.ticket(late))?.value.holder).toBe(holders.bob);
     expect((await queries.event(festival))?.value.issued).toBe(2);
   });
@@ -285,7 +296,7 @@ describeWithStore("the derived copy's projections", () => {
       const [seat, press] = history.tickets as [TicketId, TicketId];
       const { store } = await database();
       await reader(store, log, ledger.kippu).catchUp();
-      const queries = createDerivedQueries(store);
+      const queries = resultsOf(store);
 
       expect(await queries.event(concert)).toMatchObject({
         value: { status: "Sealed", maxCapacity: 4, issued: 2 },
@@ -348,7 +359,7 @@ describeWithStore("the derived copy's projections", () => {
 
     await expect(copy.step()).rejects.toBeInstanceOf(UnprojectableRecordError);
     expect(await copy.position()).toMatchObject({ nextSequence: 0 });
-    expect(await createDerivedQueries(store).event(event)).toBeNull();
+    expect(await resultsOf(store).event(event)).toBeNull();
   });
 
   it("a transfer of a ticket the copy does not hold stops the reader", async () => {
@@ -397,7 +408,7 @@ describeWithStore("the derived copy's projections", () => {
     await expect(copy.step()).rejects.toBeInstanceOf(LedgerQueryError);
     expect(await copy.position()).toMatchObject({ nextSequence: 0 });
     expect(await copy.catchUp()).toBe(2);
-    expect((await createDerivedQueries(store).event(event))?.value.owner).toBe(
+    expect((await resultsOf(store).event(event))?.value.owner).toBe(
       ledger.organiser.signer.account,
     );
   });

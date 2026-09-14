@@ -22,10 +22,17 @@ export async function wholeLog(log: LogReader): Promise<LogRecord[]> {
 export function scriptedLog(records: readonly Omit<LogRecord, "cursor">[]): {
   readonly log: LogReader;
   readonly records: readonly LogRecord[];
+  /** Appends a record to the log, and returns its cursor. */
+  append(record: Omit<LogRecord, "cursor">): Cursor;
 } {
   const served = records.map((record, index) => ({ ...record, cursor: String(index) as Cursor }));
   return {
     records: served,
+    append(record) {
+      const cursor = String(served.length) as Cursor;
+      served.push({ ...record, cursor });
+      return cursor;
+    },
     log: {
       async read(from, limit) {
         const start = from === LOG_START ? 0 : served.findIndex((r) => r.cursor === from) + 1;

@@ -75,6 +75,9 @@ export class LogContractError extends Error {
   }
 }
 
+/** The notification channel a committed batch signals on, with the sequence the next record takes. */
+export const DERIVED_APPLIED_CHANNEL = "derived_applied";
+
 const DEFAULT_BATCH_SIZE = 100;
 const DEFAULT_POLL_INTERVAL = 1000;
 const DEFAULT_RETRY_DELAY = 1000;
@@ -183,6 +186,8 @@ export function createDerivedReader(options: DerivedReaderOptions): DerivedReade
         "UPDATE derived_reader SET cursor = $1, next_sequence = $2, updated_at = now() WHERE id",
         [next, sequence],
       );
+      // Delivered on commit, to every listener in any process (`waitFor`).
+      await tx.query("SELECT pg_notify($1, $2)", [DERIVED_APPLIED_CHANNEL, String(sequence)]);
       await tx.query("COMMIT");
       return { cursor: next, nextSequence: sequence, records };
     } catch (error) {
