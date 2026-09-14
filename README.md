@@ -90,6 +90,16 @@ here is authoritative for a Ticketto fact (`REQ-IX-1`).
 
 The hostnames are not chosen yet: every RP id and origin in this repository is a placeholder.
 
+### The audit log (`NFR-7`)
+
+Every ledger write Kippu relays goes through `relay` (`src/audit/relay.ts`).
+Writes Kippu never sees, sent directly by Saifu and Iriguchi, are covered by the derived copy (`NFR-11`) instead.
+
+- `relay` hands the SDK call an **audited signer**. Before signing, the signer reads the command back out of its signing payload and writes an `audit_log` row: request id, principal (with its session), operation id and command kind.
+- The signer refuses to sign bytes that are not a command, and refuses any command whose row cannot be written. A signature over a relayed write therefore exists only with a prior audit row.
+- The submission returned to the caller settles or is rejected only after the row records the outcome: `settled` with the receipt's cursor, `rejected` with the §10 code, or `failed`.
+- Integration tests of relaying features assert coverage with `expectEveryRelayedWriteAudited` (`test/support/ledger.ts`).
+
 ### Package releases
 
 Package versions are managed with Changesets (`pnpm changeset`). Nothing is
