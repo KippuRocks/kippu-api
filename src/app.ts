@@ -16,7 +16,7 @@ export const TRPC_PREFIX = "/v0/trpc";
  * Builds the Kippu API's HTTP application without binding a port, so tests can
  * drive it through `inject` or a real client.
  *
- * `services` default to ones that fail every call, for tests that need no store.
+ * Services not given fail every call, for tests and deployments that do not need them.
  *
  * `GET /health` is an operational endpoint: it sits outside the versioned API
  * prefix and is not part of the `C5` contract.
@@ -24,8 +24,9 @@ export const TRPC_PREFIX = "/v0/trpc";
 export function buildApp(
   options: FastifyServerOptions = {},
   trpcRouter: AnyTRPCRouter = appRouter,
-  services: Services = unavailableServices(),
+  given: Partial<Services> = {},
 ): FastifyInstance {
+  const services: Services = { ...unavailableServices(), ...given };
   const app = Fastify({
     ...options,
     // tRPC batches procedure paths into the URL.
@@ -75,5 +76,11 @@ function unavailableServices(): Services {
       authenticate: unavailable,
       signOut: unavailable,
     },
+    events: unavailableService<Services["events"]>(),
   };
+}
+
+/** A service whose every method fails. */
+function unavailableService<T extends object>(): T {
+  return new Proxy({} as T, { get: () => unavailable });
 }
