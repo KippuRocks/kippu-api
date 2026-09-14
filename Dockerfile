@@ -31,6 +31,11 @@ ENV PORT=8080
 WORKDIR /app
 COPY --from=prod-deps /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
+# Workspace packages the server imports (@kippu/sponsorship, @kippu/metadata-schema):
+# their manifests, files and production dependency links, then their build output.
+COPY --from=prod-deps /app/packages ./packages
+COPY --from=build /app/packages/sponsorship/dist ./packages/sponsorship/dist
+COPY --from=build /app/packages/metadata-schema/dist ./packages/metadata-schema/dist
 COPY migrations ./migrations
 COPY package.json ./
 USER node

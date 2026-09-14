@@ -43,6 +43,8 @@ jobs:
       KIPPU_LOGIN_RP_ID: login.kippu.example
       KIPPU_LOGIN_ORIGINS: https://ibento.login.kippu.example
       KIPPU_HOLDER_RP_ID: holder.kippu.example
+      # The development wiring: backend-memory, a software KMS, a development sponsor.
+      KIPPU_LEDGER_ENVIRONMENT: development
       KIPPU_TEST_DATABASE_URL: postgres://kippu_api:kippu_api_ci@127.0.0.1:5432/kippu_api
       # Metadata object storage: a MinIO stand-in (F-026). No provider is chosen yet.
       KIPPU_TEST_S3_ENDPOINT: http://127.0.0.1:9000
@@ -157,6 +159,12 @@ jobs:
           done
           echo "the sponsor relay did not answer" >&2
           exit 1
+      - name: The built server refuses the production ledger environment
+        run: |
+          if KIPPU_LEDGER_ENVIRONMENT=production PORT=8080 node dist/server.js; then
+            echo "the server started with KIPPU_LEDGER_ENVIRONMENT=production" >&2
+            exit 1
+          fi
       - name: Health endpoint answers from the built server
         run: |
           PORT=8080 node dist/server.js &
@@ -215,6 +223,8 @@ jobs:
       KIPPU_LOGIN_RP_ID: login.kippu.example
       KIPPU_LOGIN_ORIGINS: https://ibento.login.kippu.example
       KIPPU_HOLDER_RP_ID: holder.kippu.example
+      # The development wiring: backend-memory, a software KMS, a development sponsor.
+      KIPPU_LEDGER_ENVIRONMENT: development
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
@@ -231,9 +241,18 @@ jobs:
           docker run --rm --network host -e KIPPU_DATABASE_URL kippu-api:ci node dist/store/migrate-cli.js
           docker run -d --name kippu-api --network host \
             -e KIPPU_DATABASE_URL -e KIPPU_LOGIN_RP_ID -e KIPPU_LOGIN_ORIGINS -e KIPPU_HOLDER_RP_ID \
+            -e KIPPU_LEDGER_ENVIRONMENT \
             kippu-api:ci
           for _ in $(seq 1 30); do
-            if curl -fsS http://127.0.0.1:8080/health; then exit 0; fi
+            if curl -fsS http://127.0.0.1:8080/health; then
+              # The domain services answer too: a call through tRPC reaches the store.
+              curl -fsS -X POST -H 'content-type: application/json' \
+                -d '{"email":"ci@organiser.example"}' \
+                http://127.0.0.1:8080/v0/trpc/auth.organiser.beginSignUp | grep -F '"ceremonyId"' \
+                && exit 0
+              docker logs kippu-api
+              exit 1
+            fi
             sleep 1
           done
           docker logs kippu-api

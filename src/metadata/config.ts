@@ -118,6 +118,11 @@ function readPort(value: string | undefined): number {
   return port;
 }
 
+/** Only the public origin metadata locators name (`AD-22`), for a process with no storage configured. */
+export function loadMetadataPublicUrl(env: Environment = process.env): string {
+  return readPublicUrl(env.KIPPU_METADATA_PUBLIC_URL);
+}
+
 export function loadMetadataConfig(env: Environment = process.env): MetadataConfig {
   return { publicUrl: readPublicUrl(env.KIPPU_METADATA_PUBLIC_URL), storage: readStorage(env) };
 }

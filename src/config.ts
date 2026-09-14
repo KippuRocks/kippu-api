@@ -18,6 +18,12 @@ export interface Config {
   readonly login: { readonly id: string; readonly origins: readonly string[] };
   /** The WebAuthn RP id holder credentials are bound to — a profile parameter (`F-003` §5.3). */
   readonly holderRpId: string;
+  /**
+   * Which ledger, KMS and sponsor the domain services run over (`T-021-11`).
+   * `development` and `test` use `backend-memory`, a software KMS and a
+   * development sponsor; `production` is refused until real ones exist.
+   */
+  readonly ledgerEnvironment: "development" | "test" | "production";
 }
 
 export type Environment = Readonly<Record<string, string | undefined>>;
@@ -115,6 +121,19 @@ function readOrigins(key: string, value: string | undefined, rpId: string): read
   });
 }
 
+const LEDGER_ENVIRONMENTS = ["development", "test", "production"] as const;
+
+/** Required, with no default: a deployment must never fall into the development wiring by omission. */
+function readLedgerEnvironment(value: string | undefined): Config["ledgerEnvironment"] {
+  const found = LEDGER_ENVIRONMENTS.find((environment) => environment === value);
+  if (found === undefined) {
+    throw new ConfigError(
+      `KIPPU_LEDGER_ENVIRONMENT is required: one of ${LEDGER_ENVIRONMENTS.join(", ")}`,
+    );
+  }
+  return found;
+}
+
 /** Refuses an environment carrying a route to any store but Kippu's own. */
 export function assertNoForeignStoreCredentials(env: Environment): void {
   const refused = Object.keys(env)
@@ -155,5 +174,6 @@ export function loadConfig(env: Environment = process.env): Config {
       origins: readOrigins("KIPPU_LOGIN_ORIGINS", env.KIPPU_LOGIN_ORIGINS, loginRpId),
     },
     holderRpId,
+    ledgerEnvironment: readLedgerEnvironment(env.KIPPU_LEDGER_ENVIRONMENT),
   };
 }
