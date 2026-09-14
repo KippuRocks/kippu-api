@@ -30,6 +30,38 @@ export interface TicketRestrictions {
   readonly cannotTransfer: boolean;
 }
 
+/** Whether a zone's tickets are placed by seat position or by discriminator (§5.5). */
+export type ZoneKind = "Seated" | "Unseated";
+
+/** A zone of an event: its identity and kind are ledger facts (`REQ-ID-7`). */
+export interface Zone {
+  /** The `ZoneId`, chosen by the organiser: 64 lower-case hex characters, unique in the event. */
+  readonly id: string;
+  readonly kind: ZoneKind;
+}
+
+/** An event to create (`US-A1`). */
+export interface CreateEventInput {
+  readonly zones: readonly Zone[];
+  /** Bounds issuance; `null` leaves it unbounded (`REQ-EV-3`). */
+  readonly capacity: number | null;
+}
+
+/** A write the ledger recorded. */
+export interface Recorded {
+  /**
+   * The log cursor of the record the write produced. Once Kippu's derived copy
+   * has read past it, the copy reflects the write (`NFR-11`).
+   */
+  readonly cursor: string;
+}
+
+/** An event the ledger recorded as created. */
+export interface CreatedEvent extends Recorded {
+  /** The `EventId`, derived by the Ticketto layer (`REQ-EV-9`). */
+  readonly event: string;
+}
+
 /** An event, by its ledger identifier. */
 export interface EventInput {
   /** The `EventId`, 64 lower-case hex characters. */
@@ -74,6 +106,16 @@ export interface TicketClass {
  * (`NFR-7`). A refusal with a `SPEC.md` §10 code throws `SpecCodeError`.
  */
 export interface Events {
+  /**
+   * Creates an event owned by the organiser's ledger account, `Active`, with
+   * the given zones and capacity (`US-A1`, `AC-A1.1`), and links it to the
+   * organiser in Kippu's store.
+   */
+  createEvent(
+    organiserId: string,
+    request: EventsRequest,
+    input: CreateEventInput,
+  ): Promise<CreatedEvent>;
   /** Defines a ticket class for an event the organiser owns. */
   defineClass(
     organiserId: string,

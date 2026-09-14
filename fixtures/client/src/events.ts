@@ -12,6 +12,17 @@ function organiserClient(token: string) {
   });
 }
 
+/** How Ibento creates an event (`T-021-02`): it gets the event's id and the receipt's cursor. */
+export async function createEvent(
+  token: string,
+  zone: string,
+): Promise<{ event: string; cursor: string }> {
+  return organiserClient(token).events.create.mutate({
+    zones: [{ id: zone, kind: "Seated" }],
+    capacity: 500,
+  });
+}
+
 /** How Ibento defines a guest class (`T-021-04`): the router types the class it returns. */
 export async function definePressClass(token: string, event: string): Promise<string> {
   const defined = await organiserClient(token).events.classes.define.mutate({

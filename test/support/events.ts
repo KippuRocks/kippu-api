@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import type { EventId, Sponsor, Sponsorship, ZoneId } from "@ticketto/sdk";
+import type { EventId, OperationId, Sponsor, Sponsorship, ZoneId } from "@ticketto/sdk";
 import { createTRPCClient, httpLink, TRPCClientError } from "@trpc/client";
 import type { FastifyInstance } from "fastify";
 import { expect } from "vitest";
@@ -19,10 +19,6 @@ import { createOrganiser } from "./organisers.js";
 
 /** Placeholder: the real holder RP id is not chosen yet. */
 export const HOLDER_RP_ID = "holder.kippu.example";
-
-const sponsor: Sponsor = {
-  sponsor: async () => ({ ok: true, value: new Uint8Array() as Sponsorship }),
-};
 
 /** A random 32-byte identifier, such as a zone id. */
 export const randomId = () => randomBytes(32).toString("hex") as ZoneId;
@@ -44,6 +40,8 @@ export interface EventsHarness {
   readonly audit: AuditLog;
   readonly ledger: KippuTicketto;
   readonly authority: OrganiserAuthority;
+  /** The operation id of every command the sponsor was asked to sponsor, in order (`REQ-SP-1`). */
+  readonly sponsored: readonly OperationId[];
   organiser(): Promise<TestOrganiser>;
   /** An event created with the organiser's authority, straight through the SDK. */
   createEventDirectly(
@@ -57,6 +55,13 @@ export interface EventsHarness {
 export async function eventsHarness(): Promise<EventsHarness> {
   const database = await createMigratedTestDatabase();
   const audit = createAuditLog(database.store);
+  const sponsored: OperationId[] = [];
+  const sponsor: Sponsor = {
+    sponsor: async (input) => {
+      if ("command" in input) sponsored.push(input.command.operationId);
+      return { ok: true, value: new Uint8Array() as Sponsorship };
+    },
+  };
   const ledger = makeTicketto({
     environment: "test",
     holderRpId: HOLDER_RP_ID,
@@ -92,6 +97,7 @@ export async function eventsHarness(): Promise<EventsHarness> {
     audit,
     ledger,
     authority,
+    sponsored,
 
     async organiser() {
       const { organiserId, request } = await createOrganiser(database.store);
