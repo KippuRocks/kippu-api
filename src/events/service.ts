@@ -3,6 +3,7 @@ import { type Classes, createClasses } from "../classes/classes.js";
 import type { KippuTicketto } from "../ledger/ticketto.js";
 import type { Store } from "../store/store.js";
 import { createEventWith } from "./create-event.js";
+import { issueGrantedWith } from "./issuance.js";
 import type { Events } from "./ports.js";
 import { createZones, type Zones } from "./zones.js";
 
@@ -31,6 +32,7 @@ export function createEvents(
     addSeatPositions: (organiserId, request, input) =>
       zones.addSeatPositions(organiserId, request, input),
     seatPositions: (organiserId, input) => zones.seatPositions(organiserId, input),
+    issueGranted: issueGrantedWith({ ...options, classes, zones }),
     defineClass: (organiserId, request, input) => classes.define(organiserId, request, input),
     listClasses: (organiserId, input) => classes.list(organiserId, input),
   };

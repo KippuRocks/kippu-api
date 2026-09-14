@@ -12,6 +12,8 @@ import type {
   DefineClassInput,
   EventInput,
   EventsRequest,
+  IssuedTicket,
+  IssueGrantedInput,
   Recorded,
   SeatPositions,
   TicketClass,
@@ -76,6 +78,19 @@ const designation = z
 
 const addSeatPositionsInput = z
   .object({ event: id32, zone: id32, positions: z.array(designation).min(1).max(50_000) })
+  .strict();
+
+const issueGrantedInput = z
+  .object({
+    event: id32,
+    class: id32,
+    zone: id32,
+    placement: z.discriminatedUnion("kind", [
+      z.object({ kind: z.literal("Seated"), position: designation }).strict(),
+      z.object({ kind: z.literal("Unseated") }).strict(),
+    ]),
+    holder: id32,
+  })
   .strict();
 
 const createEventInput = z
@@ -166,6 +181,25 @@ const classesRouter = router({
     ),
 });
 
+/** Granted tickets (`US-B2`, `REQ-TC-4`). */
+const ticketsRouter = router({
+  /**
+   * Issues a ticket from a granted class to a holder's account: free, with no
+   * payment record of any kind. A seat must be one of its zone's canonical
+   * positions. Refused by Kippu with `ERR-UnknownClass` or
+   * `ERR-ClassQuotaExceeded`, and by the ledger with its own §10 codes —
+   * `ERR-CapacityExceeded` and `ERR-TicketIdExists` among them.
+   */
+  issueGranted: organiserProcedure
+    .input(parser<IssueGrantedInput>(issueGrantedInput))
+    .mutation(
+      ({ ctx, input }): Promise<IssuedTicket> =>
+        mapped(() =>
+          ctx.services.events.issueGranted(ctx.principal.organiserId, requestOf(ctx), input),
+        ),
+    ),
+});
+
 /**
  * Events, zones, classes and granted issuance (`F-021`). Every procedure is the
  * organiser's: Kippu exercises their ledger authority for them (`REQ-OA-1`).
@@ -186,4 +220,5 @@ export const eventsRouter = router({
     ),
   zones: zonesRouter,
   classes: classesRouter,
+  tickets: ticketsRouter,
 });
