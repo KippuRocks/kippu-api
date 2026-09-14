@@ -48,6 +48,34 @@ a different input reusing the same id, one whose authorisation is not `p256`, on
 signed by an account that is not configured, and one whose signature does not
 verify.
 
+## The sponsor client
+
+`createRelaySponsor` is the SDK's `Sponsor` backed by Kippu's sponsor relay
+(`T-023-07`). kippu-api, Saifu and Iriguchi pass it to `createTicketto`, so every
+signed command and access pass is sponsored through the relay and no flow shows a
+fee, a balance or a funding step (`REQ-SP-1a`). It uses `fetch` only, and runs on
+Node 24 and Hermes.
+
+```ts
+import { createRelaySponsor } from "@kippu/sponsorship";
+
+const sponsor = createRelaySponsor({
+  url: "https://sponsor.example",
+  // The receipt cursor of this client's latest write, so a lagging relay waits for it.
+  receiptCursor: () => lastReceipt?.cursor,
+});
+const ticketto = createTicketto({ backend, profile, sponsor, operationLifetime });
+```
+
+| Relay answer | `sponsor()` result |
+|---|---|
+| `200` | The sponsorship |
+| `403 ERR-SponsorshipRefused` | That error, at once |
+| `503 lagging` / `503 unavailable`, or no answer | Retried with backoff, honouring `Retry-After`; once the attempts run out, `ERR-LedgerUnavailable` |
+| Anything else, `400 malformed` included | Throws `RelayProtocolError`: a defect |
+
+The relay's API is documented in kippu-api's `docs/sponsor-relay.md`.
+
 ## The sponsor's key
 
 `KmsP256Key` is the surface a KMS provider adapter implements: the compressed
