@@ -38,6 +38,7 @@ const services: Services = {
     signOut: refusing,
   },
   events: new Proxy({} as Services["events"], { get: () => refusing }),
+  metadata: new Proxy({} as Services["metadata"], { get: () => refusing }),
 };
 
 const anonymous: Context = { requestId: "test", session: null, principal: ANONYMOUS, services };

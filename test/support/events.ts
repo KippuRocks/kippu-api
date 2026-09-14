@@ -13,6 +13,8 @@ import {
 import { softwareOrganiserKms } from "../../src/authority/kms.js";
 import { createEvents } from "../../src/events/service.js";
 import { type KippuTicketto, makeTicketto } from "../../src/ledger/ticketto.js";
+import { createMetadataDocuments } from "../../src/metadata/documents.js";
+import type { MetadataStorage } from "../../src/metadata/storage.js";
 import type { AppRouter } from "../../src/trpc/router.js";
 import { createMigratedTestDatabase, type TestDatabase } from "./database.js";
 import { createOrganiser } from "./organisers.js";
@@ -54,7 +56,12 @@ export interface EventsHarness {
   close(): Promise<void>;
 }
 
-export async function eventsHarness(): Promise<EventsHarness> {
+export interface EventsHarnessOptions {
+  /** When given, the metadata editing services are served too, over this storage (`F-026`). */
+  readonly metadataStorage?: MetadataStorage;
+}
+
+export async function eventsHarness(options: EventsHarnessOptions = {}): Promise<EventsHarness> {
   const database = await createMigratedTestDatabase();
   const audit = createAuditLog(database.store);
   const sponsored: OperationId[] = [];
@@ -91,7 +98,18 @@ export async function eventsHarness(): Promise<EventsHarness> {
           },
   });
 
-  const app: FastifyInstance = buildApp({}, undefined, { auth, events });
+  const metadata =
+    options.metadataStorage === undefined
+      ? {}
+      : {
+          metadata: createMetadataDocuments({
+            store: database.store,
+            storage: options.metadataStorage,
+            ledger,
+            authority,
+          }),
+        };
+  const app: FastifyInstance = buildApp({}, undefined, { auth, events, ...metadata });
   const address = await app.listen({ host: "127.0.0.1", port: 0 });
 
   return {

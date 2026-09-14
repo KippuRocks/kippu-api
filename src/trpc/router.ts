@@ -1,5 +1,6 @@
 import { authRouter } from "../auth/router.js";
 import { eventsRouter } from "../events/router.js";
+import { metadataRouter } from "../metadata/router.js";
 import { publicProcedure, router } from "./trpc.js";
 
 /**
@@ -17,6 +18,7 @@ export const appRouter = router({
   system: systemRouter,
   auth: authRouter,
   events: eventsRouter,
+  metadata: metadataRouter,
 });
 
 export type AppRouter = typeof appRouter;

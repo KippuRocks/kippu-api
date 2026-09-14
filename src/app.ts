@@ -77,6 +77,7 @@ function unavailableServices(): Services {
       signOut: unavailable,
     },
     events: unavailableService<Services["events"]>(),
+    metadata: unavailableService<Services["metadata"]>(),
   };
 }
 
