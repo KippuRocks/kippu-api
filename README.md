@@ -30,6 +30,17 @@ pnpm start       # serves on $HOST:$PORT, default 0.0.0.0:8080
 
 `GET /health` answers `{"status":"ok"}`. It is an operational endpoint, outside any versioned API prefix, and not part of the `C5` contract.
 
+## The tRPC contract (`C5`)
+
+The root router (`src/trpc/router.ts`) is served under `/v0/trpc`. Domain
+routers (`F-021`–`F-026`) are composed into it, one per feature.
+
+A procedure that fails with a `SPEC.md` §10 error throws `toTRPCError({ code })`
+(`src/trpc/errors.ts`). The response carries the §10 code verbatim in
+`error.data.errorCode` — for example `ERR-EventNotFound` — so a client shows
+the spec's reason without a translation table of its own (`REQ-Q-3`). A code
+that is not a §10 code is never passed on; the client sees an internal error.
+
 ### Container image
 
 ```sh
