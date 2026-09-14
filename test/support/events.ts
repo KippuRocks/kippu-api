@@ -40,6 +40,8 @@ export interface EventsHarness {
   readonly audit: AuditLog;
   readonly ledger: KippuTicketto;
   readonly authority: OrganiserAuthority;
+  /** The events services the app serves. */
+  readonly events: ReturnType<typeof createEvents>;
   /** The operation id of every command the sponsor was asked to sponsor, in order (`REQ-SP-1`). */
   readonly sponsored: readonly OperationId[];
   organiser(): Promise<TestOrganiser>;
@@ -97,6 +99,7 @@ export async function eventsHarness(): Promise<EventsHarness> {
     audit,
     ledger,
     authority,
+    events,
     sponsored,
 
     async organiser() {

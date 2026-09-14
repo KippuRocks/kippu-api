@@ -23,6 +23,21 @@ export async function createEvent(
   });
 }
 
+/** How Ibento uploads a seated zone's canonical positions (`T-021-03`). */
+export async function uploadSeatMap(
+  token: string,
+  event: string,
+  zone: string,
+  positions: readonly string[],
+): Promise<readonly string[]> {
+  const uploaded = await organiserClient(token).events.zones.addSeatPositions.mutate({
+    event,
+    zone,
+    positions,
+  });
+  return uploaded.positions;
+}
+
 /** How Ibento defines a guest class (`T-021-04`): the router types the class it returns. */
 export async function definePressClass(token: string, event: string): Promise<string> {
   const defined = await organiserClient(token).events.classes.define.mutate({

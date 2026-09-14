@@ -13,3 +13,16 @@ export class SpecCodeError extends Error {
     this.code = code;
   }
 }
+
+/**
+ * A request refused before anything reaches the ledger, for a reason `SPEC.md`
+ * §10 has no code for — a seat position that is not one of its zone's canonical
+ * positions, say (`REQ-ID-3`). Routers turn it into a `BAD_REQUEST` carrying
+ * this message, with no §10 code.
+ */
+export class RefusedRequest extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "RefusedRequest";
+  }
+}
