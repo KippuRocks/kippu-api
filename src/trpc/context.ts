@@ -1,4 +1,4 @@
-import type { Services, SessionInfo } from "../auth/ports.js";
+import type { Principal, Services, SessionInfo } from "../auth/ports.js";
 
 /**
  * What every procedure receives about the request that caused it.
@@ -13,5 +13,7 @@ export interface Context {
   readonly requestId: string;
   /** The live session the request's bearer token names, or `null` when it names none. */
   readonly session: SessionInfo | null;
+  /** The session's principal, or the anonymous principal when there is no session. */
+  readonly principal: Principal;
   readonly services: Services;
 }

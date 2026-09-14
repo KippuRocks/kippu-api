@@ -84,6 +84,9 @@ here is authoritative for a Ticketto fact (`REQ-IX-1`).
   - Tokens are sent as `Authorization: Bearer <token>`.
   - They last 12 hours for organisers and 24 hours for operators, and end earlier on `auth.session.signOut` or revocation.
   - Procedures that need a principal use `organiserProcedure`, `operatorProcedure` or `authenticatedProcedure` (`src/trpc/trpc.ts`).
+- **The anonymous principal** is who a call with no live session acts as. Browsing needs no account, keys or wallet (`REQ-MP-7`).
+  - It reaches only procedures built on `publicProcedure`. Every other procedure refuses it with `UNAUTHORIZED`, including one whose access is left undeclared.
+  - `test/trpc/anonymous.test.ts` lists the public procedures, walks the root router, and fails if any other procedure lets the anonymous principal in.
 
 The hostnames are not chosen yet: every RP id and origin in this repository is a placeholder.
 
