@@ -22,9 +22,13 @@
     "migrate": "node dist/store/migrate-cli.js",
     "store:up": "docker compose up -d --wait",
     "vendor:libticketto": "scripts/vendor-libticketto.sh",
-    "vendor:check": "scripts/vendor-libticketto.sh --check"
+    "vendor:check": "scripts/vendor-libticketto.sh --check",
+    "metadata:publish-schemas": "node dist/metadata/publish-schemas-cli.js",
+    "metadata:edge": "node dist/metadata/edge-server.js"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "3.1131.0",
+    "@kippu/metadata-schema": "workspace:*",
     "@simplewebauthn/server": "14.0.2",
     "@ticketto/profile-v0": "file:vendor/libticketto/ticketto-profile-v0-0.0.0.tgz",
     "@ticketto/sdk": "file:vendor/libticketto/ticketto-sdk-0.0.0.tgz",
