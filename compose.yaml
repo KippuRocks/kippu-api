@@ -28,7 +28,8 @@ services:
   # same KIPPU_METADATA_S3_* keys. The bucket stays private: documents are read
   # through the public path (`pnpm metadata:edge`), never from the bucket.
   kippu-metadata-storage:
-    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    # MinIO withdrew its Docker Hub images: quay.io, RELEASE.2025-09-07T16-13-09Z, by digest.
+    image: quay.io/minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
     command: ["server", "/data"]
     environment:
       MINIO_ROOT_USER: kippu_metadata
