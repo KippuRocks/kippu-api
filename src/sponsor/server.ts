@@ -6,6 +6,7 @@ import { kmsP256Signer } from "@kippu/sponsorship";
 import { softwareKmsP256Key } from "@kippu/sponsorship/testing";
 import { loadSponsorRelayConfig } from "./config.js";
 import { connectRelayDerivedCopy } from "./derived.js";
+import { createEntitlements } from "./entitlements.js";
 import { buildSponsorRelay } from "./relay.js";
 
 const config = loadSponsorRelayConfig();
@@ -14,7 +15,11 @@ const config = loadSponsorRelayConfig();
 // adapter implements `KmsP256Key` and replaces it here.
 const sponsor = kmsP256Signer(softwareKmsP256Key({ secretKey: config.softwareSecretKey }));
 const derived = connectRelayDerivedCopy(config.derivedDatabaseUrl);
-const app = buildSponsorRelay({ sponsor, derived }, { logger: true });
+const entitlements = createEntitlements({
+  derived: derived.queries,
+  registrationRateLimit: config.registrationRateLimit,
+});
+const app = buildSponsorRelay({ sponsor, derived, entitlements }, { logger: true });
 
 const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
   app.log.info({ signal }, "shutting down");

@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ConfigError } from "../../src/config.js";
 import { loadSponsorRelayConfig } from "../../src/sponsor/config.js";
 import { connectRelayDerivedCopy, type RelayDerivedCopy } from "../../src/sponsor/derived.js";
+import { createEntitlements } from "../../src/sponsor/entitlements.js";
 import { buildSponsorRelay } from "../../src/sponsor/relay.js";
 import {
   createMigratedTestDatabase,
@@ -15,10 +16,13 @@ import { memoryLedger, zoneId } from "../support/memory-ledger.js";
 import { catchUpDerivedCopy, relayLoginRole } from "../support/sponsor-relay.js";
 
 const SECRET = "11".repeat(32);
+const registrationRateLimit = { registrations: 3, window: 3_600_000 };
 const base = {
   KIPPU_SPONSOR_ENVIRONMENT: "test",
   KIPPU_SPONSOR_DERIVED_DATABASE_URL: "postgres://relay:secret@127.0.0.1:5432/kippu_api",
   KIPPU_SPONSOR_SOFTWARE_SECRET_KEY: SECRET,
+  KIPPU_SPONSOR_REGISTRATIONS_PER_WINDOW: "3",
+  KIPPU_SPONSOR_REGISTRATION_WINDOW_SECONDS: "3600",
 };
 
 describe("sponsor relay configuration", () => {
@@ -29,6 +33,7 @@ describe("sponsor relay configuration", () => {
       host: "0.0.0.0",
       port: 9200,
       derivedDatabaseUrl: base.KIPPU_SPONSOR_DERIVED_DATABASE_URL,
+      registrationRateLimit: { registrations: 3, window: 3_600_000 },
     });
     expect(Buffer.from(config.softwareSecretKey).toString("hex")).toBe(SECRET);
     expect(loadSponsorRelayConfig(base).port).toBe(8082);
@@ -56,6 +61,12 @@ describe("sponsor relay configuration", () => {
     );
     expect(() =>
       loadSponsorRelayConfig({ ...base, KIPPU_SPONSOR_DERIVED_DATABASE_URL: "" }),
+    ).toThrow(ConfigError);
+    expect(() =>
+      loadSponsorRelayConfig({ ...base, KIPPU_SPONSOR_REGISTRATIONS_PER_WINDOW: "" }),
+    ).toThrow(/KIPPU_SPONSOR_REGISTRATIONS_PER_WINDOW/);
+    expect(() =>
+      loadSponsorRelayConfig({ ...base, KIPPU_SPONSOR_REGISTRATION_WINDOW_SECONDS: "0" }),
     ).toThrow(ConfigError);
   });
 });
@@ -125,7 +136,11 @@ describeWithStore("sponsor relay with the derived copy", () => {
 
   it("NFR-4: starts and serves with kippu-api stopped, reading the derived copy with its own role", async () => {
     const sponsor = kmsP256Signer(softwareKmsP256Key());
-    const relay = buildSponsorRelay({ sponsor, derived });
+    const relay = buildSponsorRelay({
+      sponsor,
+      derived,
+      entitlements: createEntitlements({ derived: derived.queries, registrationRateLimit }),
+    });
     try {
       const response = await relay.inject({ method: "GET", url: "/health" });
       expect(response.statusCode).toBe(200);
@@ -191,6 +206,7 @@ describeWithStore("sponsor relay with the derived copy", () => {
     const relay = buildSponsorRelay({
       sponsor: kmsP256Signer(softwareKmsP256Key()),
       derived: unreachable,
+      entitlements: createEntitlements({ derived: unreachable.queries, registrationRateLimit }),
     });
     try {
       const response = await relay.inject({ method: "GET", url: "/health" });

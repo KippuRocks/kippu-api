@@ -77,6 +77,15 @@ Kippu sponsors every ledger write (`REQ-SP-1`, `AD-18` A) through a relay that r
 
 - **Read-only access to the derived copy, and nothing else.** Migration `0011` creates `kippu_sponsor_relay_reader`, a role that cannot log in and holds `SELECT` on the `derived_*` tables only. A deployment creates the relay's own login role and grants it that role. The relay connects with `KIPPU_SPONSOR_DERIVED_DATABASE_URL`, and its transactions are read only as well. It refuses to start with `KIPPU_DATABASE_URL`, libpq's `PG*` variables, or anything naming the ledger's store.
 - **The sponsor key.** No KMS provider is chosen. Outside production, `KIPPU_SPONSOR_SOFTWARE_SECRET_KEY` (64 hex characters) is the key of the software stand-in behind `KmsP256Key`. `KIPPU_SPONSOR_ENVIRONMENT=production` refuses to start until a provider's adapter replaces it.
+- **Entitlements** (`src/sponsor/entitlements.ts`, `F-023` §5.3). `POST /v0/sponsor` takes a signed command or pass, framed `{ "input": { "kind", "bytes" } }` as `C4` frames it. It returns a sponsorship only when an entitlement covers the input:
+  - an organiser command signed by the event's owner;
+  - `createEvent` whose event id derives from its signer;
+  - `issueTicket` signed by the owner;
+  - `transferTicket` signed by the ticket's holder, when the ticket is transferable;
+  - `registerCredential`, within a rate limit per account;
+  - an access pass whose ticket exists and whose event is neither `Cancelled` nor `Finished`.
+
+  Anything else is `403 ERR-SponsorshipRefused`. The plan sets no numbers for the registration rate limit, so both `KIPPU_SPONSOR_REGISTRATIONS_PER_WINDOW` and `KIPPU_SPONSOR_REGISTRATION_WINDOW_SECONDS` are required.
 - **Where it listens.** `KIPPU_SPONSOR_HOST` and `KIPPU_SPONSOR_PORT` set the address, by default `0.0.0.0:8082`. `GET /health` answers only while the derived copy can be read, and reports the sponsor account and how far the copy has read the log.
 
 ```sh
@@ -84,6 +93,7 @@ psql "$KIPPU_DATABASE_URL" -c "CREATE ROLE kippu_sponsor_relay LOGIN PASSWORD 'l
 KIPPU_SPONSOR_ENVIRONMENT=development \
 KIPPU_SPONSOR_DERIVED_DATABASE_URL=postgres://kippu_sponsor_relay:local@127.0.0.1:54329/kippu_api \
 KIPPU_SPONSOR_SOFTWARE_SECRET_KEY=$(openssl rand -hex 32) \
+KIPPU_SPONSOR_REGISTRATIONS_PER_WINDOW=5 KIPPU_SPONSOR_REGISTRATION_WINDOW_SECONDS=3600 \
 KIPPU_DATABASE_URL= pnpm sponsor:start
 ```
 

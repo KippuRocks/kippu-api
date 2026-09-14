@@ -30,6 +30,12 @@ export interface SponsorRelayConfig {
    * Only in development and test.
    */
   readonly softwareSecretKey: Uint8Array;
+  /**
+   * How many `registerCredential` inputs the relay sponsors for one account per
+   * window (`F-023` plan §5.3). The plan sets no numbers, so there is no
+   * default: a deployment chooses them.
+   */
+  readonly registrationRateLimit: { readonly registrations: number; readonly window: number };
 }
 
 function present(value: string | undefined): value is string {
@@ -99,6 +105,17 @@ function readSoftwareSecretKey(environment: SponsorRelayEnvironment, value: stri
   return Uint8Array.from(Buffer.from(value, "hex"));
 }
 
+function readPositiveInteger(key: string, value: string | undefined): number {
+  if (!present(value)) {
+    throw new ConfigError(`${key} is required: a positive integer`);
+  }
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 1) {
+    throw new ConfigError(`${key} must be a positive integer, got "${value}"`);
+  }
+  return parsed;
+}
+
 export function loadSponsorRelayConfig(env: Environment = process.env): SponsorRelayConfig {
   assertNoForeignStoreCredentials(env);
   if (present(env.KIPPU_DATABASE_URL)) {
@@ -115,5 +132,16 @@ export function loadSponsorRelayConfig(env: Environment = process.env): SponsorR
     port: readPort(env.KIPPU_SPONSOR_PORT),
     derivedDatabaseUrl: readDatabaseUrl(env.KIPPU_SPONSOR_DERIVED_DATABASE_URL),
     softwareSecretKey: readSoftwareSecretKey(environment, env.KIPPU_SPONSOR_SOFTWARE_SECRET_KEY),
+    registrationRateLimit: {
+      registrations: readPositiveInteger(
+        "KIPPU_SPONSOR_REGISTRATIONS_PER_WINDOW",
+        env.KIPPU_SPONSOR_REGISTRATIONS_PER_WINDOW,
+      ),
+      window:
+        readPositiveInteger(
+          "KIPPU_SPONSOR_REGISTRATION_WINDOW_SECONDS",
+          env.KIPPU_SPONSOR_REGISTRATION_WINDOW_SECONDS,
+        ) * 1000,
+    },
   };
 }
