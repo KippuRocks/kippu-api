@@ -1,6 +1,7 @@
-import { type Cursor, LOG_START, type LogReader, type LogRecord, type Result } from "@ticketto/sdk";
+import { type Cursor, LOG_START, type LogReader, type Result } from "@ticketto/sdk";
 import pg from "pg";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { ledgerFactsProjection } from "../../src/derived/ledger-facts.js";
 import type { Projection } from "../../src/derived/projection.js";
 import {
   createDerivedReader,
@@ -12,21 +13,8 @@ import {
   describeWithStore,
   type TestDatabase,
 } from "../support/database.js";
-import { derivedSnapshot } from "../support/derived.js";
+import { derivedSnapshot, wholeLog } from "../support/derived.js";
 import { type MemoryLedger, memoryLedger, zoneId } from "../support/memory-ledger.js";
-
-/** Every record in the ledger's log, read from the start through the SDK. */
-async function wholeLog(log: LogReader): Promise<LogRecord[]> {
-  const records: LogRecord[] = [];
-  let cursor = LOG_START;
-  for (;;) {
-    const page = await log.read(cursor, 50);
-    if (!page.ok) throw new Error(page.error.code);
-    if (page.value.records.length === 0) return records;
-    records.push(...page.value.records);
-    cursor = page.value.next;
-  }
-}
 
 /** An organiser, a holder, an event and `tickets` tickets: 3 + `tickets` records. */
 async function history(ledger: MemoryLedger, tickets: number): Promise<void> {
@@ -128,7 +116,8 @@ describeWithStore("the derived copy's cursor reader", () => {
     const records = await wholeLog(ledger.backend.log);
 
     const reference = await database();
-    await reader({ store: reference.store, batchSize: 4 }).catchUp();
+    const facts = ledgerFactsProjection(ledger.kippu);
+    await reader({ store: reference.store, batchSize: 4, projections: [facts] }).catchUp();
 
     const crashed = await database();
     const admin = new pg.Client({ connectionString: crashed.url });
@@ -145,7 +134,7 @@ describeWithStore("the derived copy's cursor reader", () => {
           }
         },
       };
-      const doomed = reader({ store: crashed.store, batchSize: 4, projections: [killer] });
+      const doomed = reader({ store: crashed.store, batchSize: 4, projections: [facts, killer] });
       await doomed.step();
       await doomed.step();
       await expect(doomed.step()).rejects.toThrow();
@@ -157,8 +146,11 @@ describeWithStore("the derived copy's cursor reader", () => {
       });
       const partial = await crashed.store.query("SELECT count(*)::int AS n FROM derived_log");
       expect(partial.rows[0]).toEqual({ n: 8 });
+      // Records 3 to 7 issued five tickets; the third batch's never landed.
+      const tickets = await crashed.store.query("SELECT count(*)::int AS n FROM derived_tickets");
+      expect(tickets.rows[0]).toEqual({ n: 5 });
 
-      await reader({ store: crashed.store, batchSize: 4 }).catchUp();
+      await reader({ store: crashed.store, batchSize: 4, projections: [facts] }).catchUp();
       expect(await derivedSnapshot(crashed.store)).toEqual(await derivedSnapshot(reference.store));
     } finally {
       await admin.end();

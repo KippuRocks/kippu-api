@@ -45,6 +45,8 @@ export interface MemoryLedger {
   readonly backend: TestMemoryBackend;
   /** A client of the ledger that bypasses Kippu entirely. */
   readonly direct: Ticketto;
+  /** Kippu's own client of the same ledger, for reading its log and point queries. */
+  readonly kippu: Ticketto;
   /** An organiser credential, registered on the ledger by {@link MemoryLedger.registerOrganiser}. */
   readonly organiser: SoftwareCredential;
   registerOrganiser(): Promise<void>;
@@ -74,11 +76,13 @@ export function memoryLedger(): MemoryLedger {
     now: () => backend.clock.now(),
     randomBytes: (length) => backend.randomBytes(length),
   });
+  const kippu = createTicketto({ backend, profile, sponsor, operationLifetime: 60_000 });
   const organiser = softwareP256Signer({ secretKey: new Uint8Array(32).fill(0x11) });
 
   return {
     backend,
     direct,
+    kippu,
     organiser,
     async registerOrganiser() {
       await settled(
