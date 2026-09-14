@@ -109,6 +109,11 @@ Object storage tests create a bucket of their own per file on `KIPPU_TEST_S3_END
   - Tokens are sent as `Authorization: Bearer <token>`.
   - They last 12 hours for organisers and 24 hours for operators, and end earlier on `auth.session.signOut` or revocation.
   - Procedures that need a principal use `organiserProcedure`, `operatorProcedure` or `authenticatedProcedure` (`src/trpc/trpc.ts`).
+- **Holders** link by proving control of a ledger account (`REQ-SP-4`).
+  - `auth.holder.beginLink({ account })` returns a proof-of-control challenge: audience `kippu-api@<login RP id>`, a 32-byte nonce, a 5-minute expiry, and the account.
+  - Saifu signs the challenge with the holder credential (`@ticketto/profile-v0`'s `signProofOfControl`). `auth.holder.completeLink` then reads the credential's registration from the ledger with `getCredential` through the SDK factory — never from the client — verifies with `verifyProofOfControl`, and opens a 30-day holder session.
+  - Only `pass-webauthn` credentials link. Each nonce is consumed once. Every refusal is the same `UNAUTHORIZED`, whichever check failed.
+  - `createAuth` takes the SDK as `holders.credentials`. The server does not pass it yet: the SDK needs `F-023`'s sponsor client before the server can construct it, and until then linking refuses.
 - **The anonymous principal** is who a call with no live session acts as. Browsing needs no account, keys or wallet (`REQ-MP-7`).
   - It reaches only procedures built on `publicProcedure`. Every other procedure refuses it with `UNAUTHORIZED`, including one whose access is left undeclared.
   - `test/trpc/anonymous.test.ts` lists the public procedures, walks the root router, and fails if any other procedure lets the anonymous principal in.

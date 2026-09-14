@@ -6,7 +6,7 @@ import type {
 } from "./webauthn-json.js";
 
 /**
- * Who a request acts as (`F-020` plan §5.1). Holders join in `T-020-06`.
+ * Who a request acts as (`F-020` plan §5.1).
  *
  * This module is imported by the tRPC context, whose type is published in
  * `@kippu/api`: it may import only modules that import nothing at runtime.
@@ -14,7 +14,7 @@ import type {
 export type Principal = AnonymousPrincipal | SessionPrincipal;
 
 /** A principal that signed in, and so holds a session. */
-export type SessionPrincipal = OrganiserPrincipal | OperatorPrincipal;
+export type SessionPrincipal = OrganiserPrincipal | OperatorPrincipal | HolderPrincipal;
 
 /**
  * Whoever calls with no session: a visitor browsing with no account, no keys
@@ -43,6 +43,18 @@ export interface OperatorPrincipal {
   readonly sessionId: string;
 }
 
+/**
+ * A holder, linked to one ledger account by proving control of a holder
+ * credential registered to it. Kippu holds nothing that can sign for it
+ * (`REQ-SP-4`).
+ */
+export interface HolderPrincipal {
+  readonly kind: "holder";
+  /** The ledger `AccountId`, as lower-case hex. */
+  readonly account: string;
+  readonly sessionId: string;
+}
+
 /** A bearer token and when it stops working. The token is shown exactly once. */
 export interface IssuedSession {
   readonly token: string;
@@ -58,6 +70,32 @@ export interface Organiser {
 export interface Operator {
   readonly id: string;
   readonly organiserId: string;
+}
+
+export interface Holder {
+  readonly account: string;
+}
+
+/**
+ * What a holder signs to prove control of `account` (`F-003` plan §5.4a): the
+ * profile's proof-of-control payload over these fields. Bytes are lower-case hex.
+ */
+export interface ProofOfControlChallenge {
+  readonly audience: string;
+  readonly nonce: string;
+  /** Milliseconds since the Unix epoch. The proof is valid strictly before it. */
+  readonly expiresAt: number;
+  readonly account: string;
+}
+
+export interface HolderLinkChallenge {
+  readonly challengeId: string;
+  readonly challenge: ProofOfControlChallenge;
+}
+
+export interface HolderSession {
+  readonly session: IssuedSession;
+  readonly holder: Holder;
 }
 
 /** The first half of a WebAuthn ceremony: a challenge to sign. */
@@ -99,6 +137,11 @@ export type AuthFailure =
   | "credential-rejected"
   /** The enrolment code is unknown, already redeemed, or expired. */
   | "enrolment-code-rejected"
+  /**
+   * A proof of control was refused. Deliberately one failure, whichever check
+   * failed: the challenge, the registration on the ledger, or the signature.
+   */
+  | "link-rejected"
   /** The input is malformed. */
   | "invalid-input";
 
@@ -118,7 +161,8 @@ export class AuthError extends Error {
  * Organisers sign up with an email — an identifier only, not verified in V0 —
  * and one passkey on Kippu's login RP id, which is never the holder
  * credential's RP id. Operators redeem a one-time enrolment code their
- * organiser issued (`F-024`). Either way the result is an opaque bearer token,
+ * organiser issued (`F-024`). Holders prove control of a ledger account with
+ * their holder credential. Every way, the result is an opaque bearer token,
  * stored hashed.
  */
 export interface Auth {
@@ -133,6 +177,14 @@ export interface Auth {
     credential: AuthenticationResponseJSON,
   ): Promise<OrganiserSession>;
   redeemOperatorEnrolmentCode(code: string): Promise<OperatorSession>;
+  /** Issues a proof-of-control challenge for a holder account (`T-020-06`). */
+  beginHolderLink(account: string): Promise<HolderLinkChallenge>;
+  /**
+   * Verifies the holder's authorisation over the challenge against the
+   * credential's registration as the ledger records it, and opens a holder
+   * session. `authorisation` is the profile's authorisation bytes, as hex.
+   */
+  completeHolderLink(challengeId: string, authorisation: string): Promise<HolderSession>;
   /** The live session a bearer token names, or `null`. */
   authenticate(token: string): Promise<SessionInfo | null>;
   signOut(sessionId: string): Promise<void>;

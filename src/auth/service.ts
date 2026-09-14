@@ -5,10 +5,20 @@ import {
   verifyAuthenticationResponse,
   verifyRegistrationResponse,
 } from "@simplewebauthn/server";
+import {
+  accountOf,
+  decodeAuthorisation,
+  PROOF_OF_CONTROL_NONCE_LENGTH,
+  verifyProofOfControl,
+} from "@ticketto/profile-v0";
+import type { AccountId, Authorisation, CredentialId } from "@ticketto/sdk";
+import type { KippuTicketto } from "../ledger/ticketto.js";
 import type { Store } from "../store/store.js";
 import {
   type Auth,
   AuthError,
+  type HolderLinkChallenge,
+  type HolderSession,
   type IssuedSession,
   type OperatorSession,
   type OrganiserSession,
@@ -30,9 +40,24 @@ export interface LoginRelyingParty {
   readonly origins: readonly string[];
 }
 
+/**
+ * Reads a credential's registration from the ledger, through the SDK factory
+ * (`REQ-SDK-9`). `KippuTicketto` is one.
+ */
+export type CredentialReader = Pick<KippuTicketto, "getCredential">;
+
+/** What holder linking needs (`T-020-06`). */
+export interface HolderLinking {
+  readonly credentials: CredentialReader;
+  /** The holder credential's RP id: the profile's parameter (`F-003` §5.3). */
+  readonly holderRpId: string;
+}
+
 export interface AuthOptions {
   readonly store: Store;
   readonly relyingParty: LoginRelyingParty;
+  /** Without it, holder linking refuses every attempt. */
+  readonly holders?: HolderLinking;
   readonly now?: () => Date;
 }
 
@@ -41,6 +66,15 @@ const HOUR_MS = 60 * 60 * 1000;
 /** Session lifetimes, as built (`F-020` plan §5.1). */
 export const ORGANISER_SESSION_MS = 12 * HOUR_MS;
 export const OPERATOR_SESSION_MS = 24 * HOUR_MS;
+export const HOLDER_SESSION_MS = 30 * 24 * HOUR_MS;
+
+/** How long a proof-of-control challenge may be answered. */
+export const HOLDER_CHALLENGE_MS = 5 * 60 * 1000;
+
+/** Who a proof of control is for: this deployment's kippu-api (`F-020` plan §5.1). */
+export function linkAudience(loginRpId: string): Uint8Array {
+  return new TextEncoder().encode(`kippu-api@${loginRpId}`);
+}
 
 /** How long a WebAuthn challenge may be answered. */
 export const CEREMONY_MS = 5 * 60 * 1000;
@@ -80,25 +114,38 @@ interface PasskeyRow {
   readonly transports: string[];
 }
 
-export function createAuth({ store, relyingParty, now = () => new Date() }: AuthOptions): Auth {
+const ACCOUNT_HEX = /^[0-9a-f]{64}$/;
+const HEX = /^(?:[0-9a-f]{2}){1,8192}$/;
+
+export function createAuth({
+  store,
+  relyingParty,
+  holders,
+  now = () => new Date(),
+}: AuthOptions): Auth {
   const expectedOrigin = [...relyingParty.origins];
 
   async function issueSession(
     queryable: Pick<Store, "query">,
-    principal: { organiserId: string; operatorId: string | null },
+    principal:
+      | { kind: "organiser"; organiserId: string }
+      | { kind: "operator"; organiserId: string; operatorId: string }
+      | { kind: "holder"; account: string },
     lifetimeMs: number,
   ): Promise<IssuedSession> {
     const token = randomBytes(32).toString("base64url");
     const expiresAt = new Date(now().getTime() + lifetimeMs);
     await queryable.query(
-      `INSERT INTO sessions (id, token_hash, principal_kind, organiser_id, operator_id, created_at, expires_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      `INSERT INTO sessions
+         (id, token_hash, principal_kind, organiser_id, operator_id, holder_account, created_at, expires_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
       [
         randomUUID(),
         hashSecret(token),
-        principal.operatorId === null ? "organiser" : "operator",
-        principal.organiserId,
-        principal.operatorId,
+        principal.kind,
+        principal.kind === "holder" ? null : principal.organiserId,
+        principal.kind === "operator" ? principal.operatorId : null,
+        principal.kind === "holder" ? principal.account : null,
         now(),
         expiresAt,
       ],
@@ -204,7 +251,7 @@ export function createAuth({ store, relyingParty, now = () => new Date() }: Auth
         );
         const session = await issueSession(
           client,
-          { organiserId: ceremony.organiser_id, operatorId: null },
+          { kind: "organiser", organiserId: ceremony.organiser_id },
           ORGANISER_SESSION_MS,
         );
         await client.query("COMMIT");
@@ -295,7 +342,7 @@ export function createAuth({ store, relyingParty, now = () => new Date() }: Auth
         );
         const session = await issueSession(
           client,
-          { organiserId: ceremony.organiser_id, operatorId: null },
+          { kind: "organiser", organiserId: ceremony.organiser_id },
           ORGANISER_SESSION_MS,
         );
         await client.query("COMMIT");
@@ -333,7 +380,7 @@ export function createAuth({ store, relyingParty, now = () => new Date() }: Auth
         }
         const session = await issueSession(
           client,
-          { organiserId: row.organiser_id, operatorId: row.operator_id },
+          { kind: "operator", organiserId: row.organiser_id, operatorId: row.operator_id },
           OPERATOR_SESSION_MS,
         );
         await client.query("COMMIT");
@@ -351,15 +398,116 @@ export function createAuth({ store, relyingParty, now = () => new Date() }: Auth
       }
     },
 
+    async beginHolderLink(account) {
+      if (!ACCOUNT_HEX.test(account)) {
+        throw new AuthError("invalid-input", "not an account id");
+      }
+      const challenge = {
+        audience: Buffer.from(linkAudience(relyingParty.id)).toString("hex"),
+        nonce: randomBytes(PROOF_OF_CONTROL_NONCE_LENGTH),
+        expiresAt: now().getTime() + HOLDER_CHALLENGE_MS,
+        account,
+      };
+      const challengeId = randomUUID();
+      await store.query(
+        `INSERT INTO holder_link_challenges (id, account, nonce, expires_at, created_at)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [challengeId, account, challenge.nonce, new Date(challenge.expiresAt), now()],
+      );
+      return {
+        challengeId,
+        challenge: { ...challenge, nonce: challenge.nonce.toString("hex") },
+      } satisfies HolderLinkChallenge;
+    },
+
+    async completeHolderLink(challengeId, authorisation) {
+      // One refusal for every failure, so a caller learns nothing about which
+      // check failed (`F-020` plan §5.1).
+      const refuse = (): never => {
+        throw new AuthError("link-rejected", "the proof of control was refused");
+      };
+      const consumed = await store.query<{ account: string; nonce: Buffer; expires_at: Date }>(
+        "DELETE FROM holder_link_challenges WHERE id = $1 RETURNING account, nonce, expires_at",
+        [challengeId],
+      );
+      const row = consumed.rows[0];
+      if (row === undefined || holders === undefined || !HEX.test(authorisation)) {
+        return refuse();
+      }
+      const bytes = Uint8Array.from(Buffer.from(authorisation, "hex")) as Authorisation;
+
+      // Only a holder credential links: a `p256` key is Kippu-held (guardrail 8).
+      let claimed: { account: AccountId; credential: CredentialId };
+      try {
+        if (decodeAuthorisation(bytes).kind !== "passWebAuthn") return refuse();
+        const account = accountOf(bytes);
+        if (!account.ok) return refuse();
+        claimed = account.value;
+      } catch (error) {
+        if (error instanceof AuthError) throw error;
+        return refuse();
+      }
+      if (claimed.account !== row.account) {
+        return refuse();
+      }
+
+      // The registration as the ledger records it — never one the client presents.
+      const registered = await holders.credentials.getCredential(
+        claimed.account,
+        claimed.credential,
+      );
+      if (!registered.ok || registered.value === null) {
+        return refuse();
+      }
+      const verdict = verifyProofOfControl(
+        {
+          audience: linkAudience(relyingParty.id),
+          nonce: Uint8Array.from(row.nonce),
+          expiresAt: row.expires_at.getTime(),
+          account: row.account as AccountId,
+        },
+        bytes,
+        registered.value,
+        now().getTime(),
+        { rpId: holders.holderRpId },
+      );
+      if (!verdict.ok) {
+        return refuse();
+      }
+
+      const client = await store.connect();
+      try {
+        await client.query("BEGIN");
+        await client.query(
+          `INSERT INTO holders (account, created_at, last_linked_at) VALUES ($1, $2, $2)
+           ON CONFLICT (account) DO UPDATE SET last_linked_at = EXCLUDED.last_linked_at`,
+          [row.account, now()],
+        );
+        const session = await issueSession(
+          client,
+          { kind: "holder", account: row.account },
+          HOLDER_SESSION_MS,
+        );
+        await client.query("COMMIT");
+        return { session, holder: { account: row.account } } satisfies HolderSession;
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
+
     async authenticate(token) {
       const result = await store.query<{
         id: string;
-        principal_kind: "organiser" | "operator";
-        organiser_id: string;
+        principal_kind: "organiser" | "operator" | "holder";
+        organiser_id: string | null;
         operator_id: string | null;
+        holder_account: string | null;
         expires_at: Date;
       }>(
-        `SELECT id, principal_kind, organiser_id, operator_id, expires_at FROM sessions
+        `SELECT id, principal_kind, organiser_id, operator_id, holder_account, expires_at FROM sessions
          WHERE token_hash = $1 AND revoked_at IS NULL AND expires_at > $2`,
         [hashSecret(token), now()],
       );
@@ -368,21 +516,32 @@ export function createAuth({ store, relyingParty, now = () => new Date() }: Auth
         return null;
       }
       const expiresAt = row.expires_at.toISOString();
-      if (row.principal_kind === "operator" && row.operator_id !== null) {
-        return {
-          principal: {
-            kind: "operator",
-            operatorId: row.operator_id,
-            organiserId: row.organiser_id,
-            sessionId: row.id,
-          },
-          expiresAt,
-        } satisfies SessionInfo;
+      switch (row.principal_kind) {
+        case "operator":
+          return {
+            principal: {
+              kind: "operator",
+              operatorId: row.operator_id as string,
+              organiserId: row.organiser_id as string,
+              sessionId: row.id,
+            },
+            expiresAt,
+          } satisfies SessionInfo;
+        case "holder":
+          return {
+            principal: { kind: "holder", account: row.holder_account as string, sessionId: row.id },
+            expiresAt,
+          } satisfies SessionInfo;
+        default:
+          return {
+            principal: {
+              kind: "organiser",
+              organiserId: row.organiser_id as string,
+              sessionId: row.id,
+            },
+            expiresAt,
+          } satisfies SessionInfo;
       }
-      return {
-        principal: { kind: "organiser", organiserId: row.organiser_id, sessionId: row.id },
-        expiresAt,
-      } satisfies SessionInfo;
     },
 
     async signOut(sessionId) {
