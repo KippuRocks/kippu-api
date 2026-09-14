@@ -37,6 +37,8 @@
     "@ticketto/profile-v0": "file:vendor/libticketto/ticketto-profile-v0-0.0.0.tgz",
     "@ticketto/sdk": "file:vendor/libticketto/ticketto-sdk-0.0.0.tgz",
     "@trpc/server": "11.18.0",
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
     "fastify": "5.12.4",
     "pg": "8.23.0",
     "zod": "4.6.5"

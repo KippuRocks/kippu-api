@@ -1,4 +1,5 @@
 import type { Events } from "../events/ports.js";
+import type { Metadata } from "../metadata/ports.js";
 import type {
   AuthenticationResponseJSON,
   PublicKeyCredentialCreationOptionsJSON,
@@ -195,4 +196,5 @@ export interface Auth {
 export interface Services {
   readonly auth: Auth;
   readonly events: Events;
+  readonly metadata: Metadata;
 }
