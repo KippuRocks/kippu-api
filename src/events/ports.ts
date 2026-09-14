@@ -68,6 +68,32 @@ export interface EventInput {
   readonly event: string;
 }
 
+/** A zone of an event, by its identifier. */
+export interface ZoneInput extends EventInput {
+  /** The `ZoneId`: 64 lower-case hex characters. */
+  readonly zone: string;
+}
+
+/** A zone to add to an event (`REQ-ID-7`). */
+export interface AddZoneInput extends EventInput {
+  readonly zone: Zone;
+}
+
+/**
+ * Canonical positions to add to a seated zone (`F-021` plan §5.3). A position is
+ * a seat designation, such as `C-14`, matched exactly: `c14` is another position.
+ */
+export interface AddSeatPositionsInput extends ZoneInput {
+  readonly positions: readonly string[];
+}
+
+/** A seated zone's canonical positions, in the order they were first uploaded. */
+export interface SeatPositions {
+  readonly event: string;
+  readonly zone: string;
+  readonly positions: readonly string[];
+}
+
 /**
  * A ticket class to define for an event (`US-B2`, `AC-B2.1`, `REQ-TC-1`–`REQ-TC-3`).
  * A class is Kippu data (`REQ-TC-2`): only its identifier, and the provenance,
@@ -116,6 +142,21 @@ export interface Events {
     request: EventsRequest,
     input: CreateEventInput,
   ): Promise<CreatedEvent>;
+  /** Adds a zone to an event the organiser owns; the ledger accepts it only while `Active`. */
+  addZone(organiserId: string, request: EventsRequest, input: AddZoneInput): Promise<Recorded>;
+  /**
+   * Removes a zone from an event the organiser owns; the ledger refuses a zone in
+   * which a ticket was issued (`ERR-ZoneInUse`). The zone's positions go with it.
+   */
+  removeZone(organiserId: string, request: EventsRequest, input: ZoneInput): Promise<Recorded>;
+  /** Adds canonical positions to a seated zone of an event the organiser owns. */
+  addSeatPositions(
+    organiserId: string,
+    request: EventsRequest,
+    input: AddSeatPositionsInput,
+  ): Promise<SeatPositions>;
+  /** A seated zone's canonical positions. */
+  seatPositions(organiserId: string, input: ZoneInput): Promise<SeatPositions>;
   /** Defines a ticket class for an event the organiser owns. */
   defineClass(
     organiserId: string,

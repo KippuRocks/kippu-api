@@ -1,16 +1,21 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import type { OrganiserPrincipal } from "../auth/ports.js";
-import { SpecCodeError } from "../authority/errors.js";
+import { RefusedRequest, SpecCodeError } from "../authority/errors.js";
 import { toTRPCError } from "../trpc/errors.js";
 import { organiserProcedure, router } from "../trpc/trpc.js";
 import type {
+  AddSeatPositionsInput,
+  AddZoneInput,
   CreatedEvent,
   CreateEventInput,
   DefineClassInput,
   EventInput,
   EventsRequest,
+  Recorded,
+  SeatPositions,
   TicketClass,
+  ZoneInput,
 } from "./ports.js";
 
 /**
@@ -27,13 +32,19 @@ function parser<T>(schema: z.ZodType): (value: unknown) => T {
   };
 }
 
-/** A §10 refusal reaches the client with its code in `error.data.errorCode`. */
+/**
+ * A §10 refusal reaches the client with its code in `error.data.errorCode`; a
+ * refusal §10 has no code for, as `BAD_REQUEST` with its message.
+ */
 async function mapped<T>(work: () => Promise<T>): Promise<T> {
   try {
     return await work();
   } catch (error) {
     if (error instanceof SpecCodeError) {
       throw toTRPCError(error);
+    }
+    if (error instanceof RefusedRequest) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: error.message });
     }
     throw error;
   }
@@ -52,6 +63,20 @@ const policy = z.discriminatedUnion("kind", [
 const eventInput = z.object({ event: id32 }).strict();
 
 const zone = z.object({ id: id32, kind: z.enum(["Seated", "Unseated"]) }).strict();
+
+const zoneInput = z.object({ event: id32, zone: id32 }).strict();
+
+const addZoneInput = z.object({ event: id32, zone }).strict();
+
+const designation = z
+  .string()
+  .min(1)
+  .max(100)
+  .refine((value) => value.isWellFormed(), "expected well-formed Unicode");
+
+const addSeatPositionsInput = z
+  .object({ event: id32, zone: id32, positions: z.array(designation).min(1).max(50_000) })
+  .strict();
 
 const createEventInput = z
   .object({
@@ -77,6 +102,48 @@ const requestOf = (ctx: {
   readonly requestId: string;
   readonly principal: OrganiserPrincipal;
 }): EventsRequest => ({ requestId: ctx.requestId, principal: ctx.principal });
+
+/**
+ * Zones (`REQ-ID-7`) and the canonical seat positions of seated zones
+ * (`REQ-ID-3`; `F-021` plan §5.3). Adding and removing a zone are ledger writes;
+ * the ledger's verdict — `ERR-ZoneExists`, `ERR-ZoneInUse`, `ERR-EventSealed` —
+ * is passed on unchanged.
+ */
+const zonesRouter = router({
+  add: organiserProcedure
+    .input(parser<AddZoneInput>(addZoneInput))
+    .mutation(
+      ({ ctx, input }): Promise<Recorded> =>
+        mapped(() => ctx.services.events.addZone(ctx.principal.organiserId, requestOf(ctx), input)),
+    ),
+  remove: organiserProcedure
+    .input(parser<ZoneInput>(zoneInput))
+    .mutation(
+      ({ ctx, input }): Promise<Recorded> =>
+        mapped(() =>
+          ctx.services.events.removeZone(ctx.principal.organiserId, requestOf(ctx), input),
+        ),
+    ),
+  /**
+   * Adds canonical positions to a seated zone. Positions already on the list are
+   * kept once; the answer is the whole list. Issuance accepts only a position on
+   * it, matched exactly.
+   */
+  addSeatPositions: organiserProcedure
+    .input(parser<AddSeatPositionsInput>(addSeatPositionsInput))
+    .mutation(
+      ({ ctx, input }): Promise<SeatPositions> =>
+        mapped(() =>
+          ctx.services.events.addSeatPositions(ctx.principal.organiserId, requestOf(ctx), input),
+        ),
+    ),
+  seatPositions: organiserProcedure
+    .input(parser<ZoneInput>(zoneInput))
+    .query(
+      ({ ctx, input }): Promise<SeatPositions> =>
+        mapped(() => ctx.services.events.seatPositions(ctx.principal.organiserId, input)),
+    ),
+});
 
 /**
  * Ticket classes (`US-B2`). A class declared `Purchased` with a restriction is
@@ -117,5 +184,6 @@ export const eventsRouter = router({
           ctx.services.events.createEvent(ctx.principal.organiserId, requestOf(ctx), input),
         ),
     ),
+  zones: zonesRouter,
   classes: classesRouter,
 });
