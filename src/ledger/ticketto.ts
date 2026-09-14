@@ -28,13 +28,15 @@ import {
 
 /**
  * Where kippu-api runs. The ledger backend follows from it (`F-020` plan §5.4):
- * `backend-memory` in development and tests, `binding-offchain` elsewhere.
+ * `backend-memory` in development and tests, `binding-offchain` against
+ * `ticketto-offchain` in staging (`T-023-08`) and production.
  */
-export type LedgerEnvironment = "development" | "test" | "production";
+export type LedgerEnvironment = "development" | "test" | "staging" | "production";
 
 export const LEDGER_ENVIRONMENTS: readonly LedgerEnvironment[] = [
   "development",
   "test",
+  "staging",
   "production",
 ];
 
@@ -47,6 +49,12 @@ export interface MakeTickettoOptions {
   /** How long an assembled command stays valid, in milliseconds. `AD-15` sets no default. */
   readonly operationLifetime: number;
   readonly now?: () => Timestamp;
+  /**
+   * The ledger backend, already connected, for `staging` and `production`:
+   * `binding-offchain` over the ledger service's endpoint (`connectLedgerBackend`
+   * in `src/wiring.ts`). Never credentials for the service's store (`REQ-SDK-9`).
+   */
+  readonly backend?: Backend;
 }
 
 /** A command method, with its input held to the `NFR-6` allow-list. */
@@ -74,19 +82,20 @@ export type KippuTicketto = Omit<Ticketto, CommandKind | "submitAccessPass"> &
     ): Submission<Receipt>;
   };
 
-function backendFor(environment: LedgerEnvironment, profile: Profile): Backend {
-  switch (environment) {
+function backendFor(options: MakeTickettoOptions, profile: Profile): Backend {
+  switch (options.environment) {
     case "development":
     case "test":
       return createMemoryBackend({ profile });
+    case "staging":
     case "production":
-      // `binding-offchain` does not yet implement the backend port (`T-007-02`,
-      // `T-007-03`). Its configuration will be the ledger service's endpoint —
-      // never credentials for its store (`REQ-SDK-9`).
-      throw new Error(
-        "the production ledger backend (binding-offchain) is not available yet; " +
-          "kippu-api cannot relay ledger writes in production",
-      );
+      if (options.backend === undefined) {
+        throw new Error(
+          `the ${options.environment} ledger backend is binding-offchain: connect it to the ` +
+            "ledger service first, and pass it as `backend`",
+        );
+      }
+      return options.backend;
   }
 }
 
@@ -98,7 +107,7 @@ function backendFor(environment: LedgerEnvironment, profile: Profile): Backend {
 export function makeTicketto(options: MakeTickettoOptions): KippuTicketto {
   const profile = createProfileV0({ rpId: options.holderRpId });
   const sdk = createTicketto({
-    backend: backendFor(options.environment, profile),
+    backend: backendFor(options, profile),
     profile,
     sponsor: options.sponsor,
     operationLifetime: options.operationLifetime,

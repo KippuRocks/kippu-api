@@ -30,6 +30,9 @@ importers:
       '@ticketto/backend-memory':
         specifier: file:vendor/libticketto/ticketto-backend-memory-0.0.0.tgz
         version: file:vendor/libticketto/ticketto-backend-memory-0.0.0.tgz
+      '@ticketto/binding-offchain':
+        specifier: file:vendor/libticketto/ticketto-binding-offchain-0.0.0.tgz
+        version: file:vendor/libticketto/ticketto-binding-offchain-0.0.0.tgz
       '@ticketto/profile-v0':
         specifier: file:vendor/libticketto/ticketto-profile-v0-0.0.0.tgz
         version: file:vendor/libticketto/ticketto-profile-v0-0.0.0.tgz
@@ -551,7 +554,12 @@ packages:
     engines: {node: '>=18.0.0'}
 
   '@ticketto/backend-memory@file:vendor/libticketto/ticketto-backend-memory-0.0.0.tgz':
-    resolution: {integrity: sha512-hk3O/Yb3WNLFlTlRETtcCRBuDtmKqMYgDRS5/6jSOUIeToNrnXH3cFtFl5JOgpMV09dyQ3OqHNO2LrfDuZ7/OQ==, tarball: file:vendor/libticketto/ticketto-backend-memory-0.0.0.tgz}
+    resolution: {integrity: sha512-WhS3S9GzogBlGTHsUmsck7f0OJ76alVNXX62+X1nccYkgkzsCezwQkI0s3em9EFKybPFjJcjQQXY/lCqVFZvxA==, tarball: file:vendor/libticketto/ticketto-backend-memory-0.0.0.tgz}
+    version: 0.0.0
+    engines: {node: '>=24'}
+
+  '@ticketto/binding-offchain@file:vendor/libticketto/ticketto-binding-offchain-0.0.0.tgz':
+    resolution: {integrity: sha512-OFadIl4kQhdNt+3fEeUQQq25oaxOD1UO51nLL6VQlePGfx/3CIbygnPheb+4Oyw89E1sKwDwcKe7Wcua0XUaMQ==, tarball: file:vendor/libticketto/ticketto-binding-offchain-0.0.0.tgz}
     version: 0.0.0
     engines: {node: '>=24'}
 
@@ -1867,6 +1875,11 @@ snapshots:
     dependencies:
       '@ticketto/ledger-rules': file:vendor/libticketto/ticketto-ledger-rules-0.0.0.tgz
       '@ticketto/log': file:vendor/libticketto/ticketto-log-0.0.0.tgz
+      '@ticketto/sdk': file:vendor/libticketto/ticketto-sdk-0.0.0.tgz
+
+  '@ticketto/binding-offchain@file:vendor/libticketto/ticketto-binding-offchain-0.0.0.tgz':
+    dependencies:
+      '@ticketto/profile-v0': file:vendor/libticketto/ticketto-profile-v0-0.0.0.tgz
       '@ticketto/sdk': file:vendor/libticketto/ticketto-sdk-0.0.0.tgz
 
   '@ticketto/ledger-rules@file:vendor/libticketto/ticketto-ledger-rules-0.0.0.tgz':

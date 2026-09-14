@@ -1,4 +1,6 @@
 import { createRelaySponsor } from "@kippu/sponsorship";
+import { connectOffchainBackend } from "@ticketto/binding-offchain";
+import type { Backend } from "@ticketto/sdk";
 import type { FastifyInstance, FastifyServerOptions } from "fastify";
 import { buildApp } from "./app.js";
 import { createAuditLog } from "./audit/audit-log.js";
@@ -26,6 +28,29 @@ import type { Store } from "./store/store.js";
  */
 export const DEVELOPMENT_OPERATION_LIFETIME = 5 * 60 * 1000;
 
+/**
+ * `binding-offchain`, connected to the ledger service `config.ledgerServiceUrl`
+ * names (`T-023-08`): its assurance declaration is read on connecting. `undefined`
+ * outside `staging`, where the ledger is `backend-memory`. The only configuration
+ * is the service's endpoint: kippu-api holds no credential for its store
+ * (`REQ-SDK-9`).
+ */
+export async function connectLedgerBackend(
+  config: Pick<Config, "ledgerEnvironment" | "ledgerServiceUrl">,
+): Promise<Backend | undefined> {
+  if (config.ledgerEnvironment !== "staging") return undefined;
+  if (config.ledgerServiceUrl === undefined) {
+    throw new WiringError("staging needs KIPPU_LEDGER_SERVICE_URL");
+  }
+  const connected = await connectOffchainBackend({ url: config.ledgerServiceUrl });
+  if (!connected.ok) {
+    throw new WiringError(
+      `the ledger service at ${config.ledgerServiceUrl} cannot be reached: ${connected.error.code}`,
+    );
+  }
+  return connected.value;
+}
+
 export class WiringError extends Error {
   constructor(message: string) {
     super(message);
@@ -41,6 +66,11 @@ export interface WiringOptions {
    * editing fails, and reads join no documents (`REQ-MD-2`); everything else is served.
    */
   readonly metadataStorage?: MetadataStorage;
+  /**
+   * The ledger backend in `staging`: `binding-offchain`, connected to the ledger
+   * service with {@link connectLedgerBackend}. Ignored in `development` and `test`.
+   */
+  readonly ledgerBackend?: Backend;
   /** Receives every failure of the derived copy's background reader. Defaults to `console.error`. */
   readonly onReaderError?: (error: unknown) => void;
 }
@@ -67,22 +97,32 @@ const NO_METADATA_STORAGE: Pick<MetadataStorage, "get"> = { get: async () => nul
  * In `development` and `test` they run over `backend-memory`, a software KMS for
  * organiser keys, and a development sponsor — unless `KIPPU_SPONSOR_URL` names
  * the sponsor relay, whose client then sponsors every write — all in this process's memory, so
- * the ledger, and every organiser key, is gone when it exits. `production` is
- * refused: it needs `binding-offchain`, a KMS provider and the sponsor relay's
- * client, and the first two do not exist yet.
+ * the ledger, and every organiser key, is gone when it exits. In `staging` the
+ * SDK runs over `binding-offchain` against a `ticketto-offchain`, sponsored
+ * through the relay (`T-023-08`); organiser keys are still in a software KMS.
+ * `production` is refused until a KMS provider is chosen.
  */
 export function createDomainServices(
-  config: Pick<Config, "ledgerEnvironment" | "login" | "holderRpId" | "sponsorRelayUrl">,
+  config: Pick<
+    Config,
+    "ledgerEnvironment" | "login" | "holderRpId" | "sponsorRelayUrl" | "ledgerServiceUrl"
+  >,
   store: Store,
   options: WiringOptions = {},
 ): DomainServices {
   const environment = config.ledgerEnvironment;
   if (environment === "production") {
     throw new WiringError(
-      "KIPPU_LEDGER_ENVIRONMENT=production is refused: the production ledger backend " +
-        "(binding-offchain), a KMS provider for organiser keys and the sponsor relay's client " +
-        "are not wired yet. Use development locally.",
+      "KIPPU_LEDGER_ENVIRONMENT=production is refused: no KMS provider for organiser keys is " +
+        "chosen yet. Use staging against a ticketto-offchain, or development locally.",
     );
+  }
+  if (environment === "staging") {
+    if (options.ledgerBackend === undefined || config.sponsorRelayUrl === undefined) {
+      throw new WiringError(
+        "staging needs binding-offchain connected to the ledger service, and the sponsor relay",
+      );
+    }
   }
   const publicUrl = options.metadataPublicUrl;
   // Sponsored through the relay when one is configured, with its entitlements and
@@ -101,6 +141,9 @@ export function createDomainServices(
       holderRpId: config.holderRpId,
       sponsor,
       operationLifetime: DEVELOPMENT_OPERATION_LIFETIME,
+      ...(environment === "staging" && options.ledgerBackend !== undefined
+        ? { backend: options.ledgerBackend }
+        : {}),
     }),
   );
   receipts = tracked.receipts;
@@ -165,7 +208,10 @@ export interface KippuServer {
 
 /** The API server's application, with its domain services mounted. */
 export function createServer(
-  config: Pick<Config, "ledgerEnvironment" | "login" | "holderRpId" | "sponsorRelayUrl">,
+  config: Pick<
+    Config,
+    "ledgerEnvironment" | "login" | "holderRpId" | "sponsorRelayUrl" | "ledgerServiceUrl"
+  >,
   store: Store,
   options: FastifyServerOptions = {},
   wiring: WiringOptions = {},
