@@ -101,7 +101,7 @@ jobs:
           grep -iFx "access-control-allow-origin: *" <(tr -d '\r' < headers.txt)
           if grep -iq "access-control-allow-credentials" headers.txt; then exit 1; fi
           cmp event.json packages/metadata-schema/schemas/event/1.0.json
-      - name: The sponsor relay starts and serves with kippu-api stopped, on read-only credentials
+      - name: The sponsor relay starts and serves with kippu-api stopped, on read-only credentials, to a client with no tRPC dependency
         env:
           KIPPU_DATABASE_URL: ""
         run: |
@@ -117,7 +117,12 @@ jobs:
             node dist/sponsor/server.js &
           relay=$!
           for _ in $(seq 1 30); do
-            if curl -fsS http://127.0.0.1:8082/health; then kill "$relay"; exit 0; fi
+            if curl -fsS http://127.0.0.1:8082/health; then
+              # T-023-05: a client with no tRPC dependency obtains a sponsorship.
+              scripts/check-sponsor-client.sh http://127.0.0.1:8082
+              kill "$relay"
+              exit 0
+            fi
             sleep 1
           done
           echo "the sponsor relay did not answer" >&2

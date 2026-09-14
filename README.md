@@ -77,6 +77,7 @@ Kippu sponsors every ledger write (`REQ-SP-1`, `AD-18` A) through a relay that r
 
 - **Read-only access to the derived copy, and nothing else.** Migration `0011` creates `kippu_sponsor_relay_reader`, a role that cannot log in and holds `SELECT` on the `derived_*` tables only. A deployment creates the relay's own login role and grants it that role. The relay connects with `KIPPU_SPONSOR_DERIVED_DATABASE_URL`, and its transactions are read only as well. It refuses to start with `KIPPU_DATABASE_URL`, libpq's `PG*` variables, or anything naming the ledger's store.
 - **The sponsor key.** No KMS provider is chosen. Outside production, `KIPPU_SPONSOR_SOFTWARE_SECRET_KEY` (64 hex characters) is the key of the software stand-in behind `KmsP256Key`. `KIPPU_SPONSOR_ENVIRONMENT=production` refuses to start until a provider's adapter replaces it.
+- **The API** is plain HTTP and JSON, documented in [`docs/sponsor-relay.md`](docs/sponsor-relay.md). `fixtures/sponsor-client` is a client with no tRPC dependency; CI installs it outside the workspace and obtains a sponsorship from the built relay (`scripts/check-sponsor-client.sh`).
 - **Entitlements** (`src/sponsor/entitlements.ts`, `F-023` §5.3). `POST /v0/sponsor` takes a signed command or pass, framed `{ "input": { "kind", "bytes" } }` as `C4` frames it. It returns a sponsorship only when an entitlement covers the input:
   - an organiser command signed by the event's owner;
   - `createEvent` whose event id derives from its signer;
