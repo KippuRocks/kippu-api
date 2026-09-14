@@ -89,6 +89,60 @@ describe("metadata schemas", () => {
     });
   });
 
+  describe("identifier width", () => {
+    const id32 = "ab".repeat(32);
+    const wrongWidths = [
+      ["shorter", "ab".repeat(31)],
+      ["longer", "ab".repeat(33)],
+      ["odd-length", `${"ab".repeat(32)}a`],
+      ["upper-case", "AB".repeat(32)],
+    ] as const;
+
+    it("accepts a class document whose ClassId is 32 bytes of lower-case hex", async () => {
+      const value = await fixture("class.json");
+      const check = validator().getSchema(CLASS_SCHEMA_ID);
+      expect(check?.({ ...value, classId: id32 })).toBe(true);
+    });
+
+    it.each(wrongWidths)("refuses a class document whose ClassId is %s", async (_, classId) => {
+      const value = await fixture("class.json");
+      const check = validator().getSchema(CLASS_SCHEMA_ID);
+      expect(check?.({ ...value, classId })).toBe(false);
+    });
+
+    it("accepts an event document whose ZoneIds are 32 bytes of lower-case hex", async () => {
+      const value = await fixture("event.json");
+      const check = validator().getSchema(EVENT_SCHEMA_ID);
+      expect(
+        check?.({
+          ...value,
+          zones: { [id32]: { name: "Stalls" } },
+          seatMaps: [{ url: "https://example.invalid/map.svg", zones: [id32] }],
+        }),
+      ).toBe(true);
+    });
+
+    it.each(wrongWidths)(
+      "refuses an event document keyed by a ZoneId that is %s",
+      async (_, zoneId) => {
+        const value = await fixture("event.json");
+        const check = validator().getSchema(EVENT_SCHEMA_ID);
+        expect(check?.({ ...value, zones: { [zoneId]: { name: "Stalls" } } })).toBe(false);
+      },
+    );
+
+    it.each(wrongWidths)("refuses a seat map naming a ZoneId that is %s", async (_, zoneId) => {
+      const value = await fixture("event.json");
+      const check = validator().getSchema(EVENT_SCHEMA_ID);
+      expect(
+        check?.({
+          ...value,
+          seatMaps: [{ url: "https://example.invalid/map.svg", zones: [zoneId] }],
+        }),
+      ).toBe(false);
+    });
+  });
+
   it("refuses an event document whose image is not served over HTTPS", async () => {
     const value = await fixture("event.json");
     const check = validator().getSchema(EVENT_SCHEMA_ID);

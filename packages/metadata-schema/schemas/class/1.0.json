@@ -11,9 +11,9 @@
       "const": "https://meta.kippu.rocks/v0/schemas/class/1.0.json"
     },
     "classId": {
-      "description": "The class identifier tickets carry, lower-case hex.",
+      "description": "The class identifier tickets carry: 32 bytes, lower-case hex.",
       "type": "string",
-      "pattern": "^(?:[0-9a-f]{2})+$"
+      "pattern": "^[0-9a-f]{64}$"
     },
     "eventId": {
       "description": "The ledger identifier of the event the class belongs to, lower-case hex.",

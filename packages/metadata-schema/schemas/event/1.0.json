@@ -119,7 +119,7 @@
       "description": "Presentation of the event's zones, keyed by zone identifier. A zone's identity and kind are ledger facts; its name is not.",
       "type": "object",
       "propertyNames": {
-        "$ref": "#/$defs/hexId"
+        "$ref": "#/$defs/zoneId"
       },
       "additionalProperties": {
         "type": "object",
@@ -152,7 +152,7 @@
             "type": "array",
             "uniqueItems": true,
             "items": {
-              "$ref": "#/$defs/hexId"
+              "$ref": "#/$defs/zoneId"
             }
           }
         },
@@ -166,9 +166,10 @@
       "type": "string",
       "pattern": "^[0-9a-f]{64}$"
     },
-    "hexId": {
+    "zoneId": {
+      "description": "A zone identifier: 32 bytes, lower-case hex.",
       "type": "string",
-      "pattern": "^(?:[0-9a-f]{2})+$"
+      "pattern": "^[0-9a-f]{64}$"
     },
     "text": {
       "type": "string",
