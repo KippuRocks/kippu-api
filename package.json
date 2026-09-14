@@ -10,7 +10,7 @@
     "node": ">=24"
   },
   "scripts": {
-    "build:deps": "pnpm --filter @kippu/sponsorship build",
+    "build:deps": "pnpm --filter @kippu/sponsorship --filter @kippu/metadata-schema build",
     "build": "pnpm build:deps && tsc -p tsconfig.build.json && pnpm --filter \"./packages/**\" build",
     "typecheck": "pnpm build:deps && tsc --noEmit && pnpm --filter \"./packages/**\" typecheck",
     "lint": "biome ci .",

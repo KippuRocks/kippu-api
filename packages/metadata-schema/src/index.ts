@@ -12,6 +12,7 @@
 import classJson from "../schemas/class/1.0.json" with { type: "json" };
 import eventJson from "../schemas/event/1.0.json" with { type: "json" };
 
+export { classLocator, eventLocator, METADATA_ORIGIN } from "./locators.js";
 export {
   DENIED_FIELD_NAME_FRAGMENTS,
   DENIED_FIELD_NAMES,

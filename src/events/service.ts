@@ -13,6 +13,8 @@ export interface EventsOptions {
   readonly authority: OrganiserAuthority;
   /** The SDK, from `makeTicketto` (`T-020-08`). */
   readonly ledger: KippuTicketto;
+  /** The public origin metadata locators name (`AD-22`); defaults to `https://meta.kippu.rocks`. */
+  readonly metadataPublicUrl?: string;
   readonly now?: () => Date;
   readonly randomBytes?: (length: number) => Uint8Array;
 }
