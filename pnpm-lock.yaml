@@ -542,12 +542,12 @@ packages:
     engines: {node: '>=18.0.0'}
 
   '@ticketto/backend-memory@file:vendor/libticketto/ticketto-backend-memory-0.0.0.tgz':
-    resolution: {integrity: sha512-8fl4gjQ2ov7cKzxRSYEth8Y1lmd/ijYC2E0h1bgosJnkCnXrG0ykS9mLk8Lw70hDeE6WNKwx4y8yuValFv1j5Q==, tarball: file:vendor/libticketto/ticketto-backend-memory-0.0.0.tgz}
+    resolution: {integrity: sha512-hk3O/Yb3WNLFlTlRETtcCRBuDtmKqMYgDRS5/6jSOUIeToNrnXH3cFtFl5JOgpMV09dyQ3OqHNO2LrfDuZ7/OQ==, tarball: file:vendor/libticketto/ticketto-backend-memory-0.0.0.tgz}
     version: 0.0.0
     engines: {node: '>=24'}
 
   '@ticketto/ledger-rules@file:vendor/libticketto/ticketto-ledger-rules-0.0.0.tgz':
-    resolution: {integrity: sha512-0aU5acZgMvlHnLzdTV6HydRM6yPXGlb5YMl5OJ96iBPbbKjWHDTe5VD/taboNXL/IVpstUDIGSQGsGC2LnX83A==, tarball: file:vendor/libticketto/ticketto-ledger-rules-0.0.0.tgz}
+    resolution: {integrity: sha512-v7XJYd6TUoQ+lrONPdWQKdAvvOx6KzTxo2ry3Sg1E3EU1GKWosNQxkdTNnRx75XFXcgDwzUEnCxvwQtQIaNNQQ==, tarball: file:vendor/libticketto/ticketto-ledger-rules-0.0.0.tgz}
     version: 0.0.0
     engines: {node: '>=24'}
 
@@ -562,7 +562,7 @@ packages:
     engines: {node: '>=24'}
 
   '@ticketto/sdk@file:vendor/libticketto/ticketto-sdk-0.0.0.tgz':
-    resolution: {integrity: sha512-LgVMV7hXMVqOexOxyWPwKm3fmJSyJaOlyk9V18JQdgkR2WV1ITAbEqPl24hOtV/WgLCTtInTqidcL9p2ukQS5Q==, tarball: file:vendor/libticketto/ticketto-sdk-0.0.0.tgz}
+    resolution: {integrity: sha512-xvFluzvkZF3xMUS75jZkJjLE/Bvei6b6i2iMxynbytA50dwOW04U/N3RrHzx7WN6FHdenR1spmHJZMM1TxuVyg==, tarball: file:vendor/libticketto/ticketto-sdk-0.0.0.tgz}
     version: 0.0.0
     engines: {node: '>=24'}
 
