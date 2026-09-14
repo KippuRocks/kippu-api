@@ -70,6 +70,8 @@ function unavailableServices(): Services {
       beginOrganiserSignIn: unavailable,
       completeOrganiserSignIn: unavailable,
       redeemOperatorEnrolmentCode: unavailable,
+      beginHolderLink: unavailable,
+      completeHolderLink: unavailable,
       authenticate: unavailable,
       signOut: unavailable,
     },

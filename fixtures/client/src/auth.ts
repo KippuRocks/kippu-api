@@ -26,7 +26,7 @@ export async function signIn(
 }
 
 /** A signed-in client sends the session token as a bearer token. */
-export async function whoAmI(token: string): Promise<"organiser" | "operator"> {
+export async function whoAmI(token: string): Promise<"organiser" | "operator" | "holder"> {
   const signedIn = createTRPCClient<AppRouter>({
     links: [
       httpBatchLink({
@@ -101,4 +101,27 @@ export function acceptsBrowserResponses(
   attestation: BrowserRegistrationResponse,
 ): [Assertion, Attestation] {
   return [assertion, attestation];
+}
+
+/**
+ * How Saifu links a holder account: a proof-of-control challenge, signed with
+ * the holder credential through `@ticketto/profile-v0` (passed in here), then
+ * exchanged for a holder session.
+ */
+type LinkChallenge = Awaited<ReturnType<Api["auth"]["holder"]["beginLink"]["mutate"]>>;
+
+export async function linkHolder(
+  api: Api,
+  account: string,
+  signProof: (challenge: LinkChallenge["challenge"]) => Promise<string>,
+): Promise<{ account: string; token: string }> {
+  const { challengeId, challenge } = await api.auth.holder.beginLink.mutate({ account });
+  const { session, holder } = await api.auth.holder.completeLink.mutate({
+    challengeId,
+    authorisation: await signProof(challenge),
+  });
+  // @ts-expect-error — the challenge's expiry is milliseconds, not a string.
+  const expiry: string = challenge.expiresAt;
+  void expiry;
+  return { account: holder.account, token: session.token };
 }

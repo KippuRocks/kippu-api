@@ -1,5 +1,10 @@
 import { initTRPC, TRPCError } from "@trpc/server";
-import type { OperatorPrincipal, OrganiserPrincipal, SessionInfo } from "../auth/ports.js";
+import type {
+  HolderPrincipal,
+  OperatorPrincipal,
+  OrganiserPrincipal,
+  SessionInfo,
+} from "../auth/ports.js";
 import type { Context } from "./context.js";
 import { SpecErrorCause } from "./errors.js";
 
@@ -83,4 +88,13 @@ export const operatorProcedure = authenticatedProcedure.use(({ ctx, next }) => {
     throw new TRPCError({ code: "FORBIDDEN", message: "only an operator may do this" });
   }
   return next({ ctx: { ...ctx, principal: principal as OperatorPrincipal } });
+});
+
+/** A procedure only a linked holder may call. */
+export const holderProcedure = authenticatedProcedure.use(({ ctx, next }) => {
+  const { principal } = ctx.session;
+  if (principal.kind !== "holder") {
+    throw new TRPCError({ code: "FORBIDDEN", message: "only a holder may do this" });
+  }
+  return next({ ctx: { ...ctx, principal: principal as HolderPrincipal } });
 });

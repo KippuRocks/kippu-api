@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Vendors @ticketto/sdk, profile-v0, ledger-rules and backend-memory from a pinned libticketto commit, as
+# Vendors @ticketto/sdk, profile-v0, log, ledger-rules and backend-memory from a pinned libticketto commit, as
 # ticketto-offchain does (tools/vendor-libticketto.sh there).
 #
 #   scripts/vendor-libticketto.sh <commit>   build and pack the packages at <commit> into
@@ -15,7 +15,7 @@ set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 out="$root/vendor/libticketto"
 repository="https://github.com/KippuRocks/libticketto.git"
-packages=(sdk profile-v0 ledger-rules backend-memory)
+packages=(sdk profile-v0 log ledger-rules backend-memory)
 
 mode=vendor
 if [[ "${1:-}" == "--check" ]]; then
@@ -65,6 +65,17 @@ if [[ "$mode" == check ]]; then
     mkdir -p "$work/expected/$name" "$work/actual/$name"
     tar -xzf "$tarball" -C "$work/expected/$name"
     tar -xzf "$out/$name" -C "$work/actual/$name"
+    # `pnpm pack` writes rewritten workspace dependencies in no fixed order, so
+    # manifests are compared with their keys sorted; every other file byte for byte.
+    for manifest in "$work/expected/$name/package/package.json" "$work/actual/$name/package/package.json"; do
+      node -e '
+        const fs = require("node:fs");
+        const sort = (v) => Array.isArray(v) ? v.map(sort) : v && typeof v === "object"
+          ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, sort(v[k])])) : v;
+        const file = process.argv[1];
+        fs.writeFileSync(file, JSON.stringify(sort(JSON.parse(fs.readFileSync(file, "utf8"))), null, 2));
+      ' "$manifest"
+    done
     if ! diff -r "$work/expected/$name" "$work/actual/$name" >/dev/null; then
       echo "vendor/libticketto/$name differs from libticketto at $resolved" >&2
       status=1

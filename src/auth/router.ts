@@ -4,6 +4,8 @@ import { authenticatedProcedure, publicProcedure, router } from "../trpc/trpc.js
 import {
   AuthError,
   type AuthFailure,
+  type HolderLinkChallenge,
+  type HolderSession,
   type OperatorSession,
   type OrganiserSession,
   type SessionInfo,
@@ -89,6 +91,7 @@ const TRANSPORT_CODE: Record<AuthFailure, TRPCError["code"]> = {
   "ceremony-expired": "UNAUTHORIZED",
   "credential-rejected": "UNAUTHORIZED",
   "enrolment-code-rejected": "UNAUTHORIZED",
+  "link-rejected": "UNAUTHORIZED",
   "invalid-input": "BAD_REQUEST",
 };
 
@@ -150,6 +153,46 @@ const operatorRouter = router({
     ),
 });
 
+export interface BeginHolderLinkInput {
+  /** The ledger `AccountId`, as lower-case hex. */
+  readonly account: string;
+}
+
+export interface CompleteHolderLinkInput {
+  readonly challengeId: string;
+  /** The profile's authorisation over the challenge's proof-of-control payload, as lower-case hex. */
+  readonly authorisation: string;
+}
+
+/**
+ * Saifu links a holder account by proving control of it (`REQ-SP-4`):
+ * `beginLink` returns a proof-of-control challenge; Saifu signs its payload
+ * (`@ticketto/profile-v0`'s `signProofOfControl`) with the holder credential;
+ * `completeLink` verifies it against the registration the ledger records and
+ * returns a holder session. Every refusal is the same `UNAUTHORIZED`.
+ */
+const holderRouter = router({
+  beginLink: publicProcedure
+    .input(parser<BeginHolderLinkInput>(z.object({ account: z.string().regex(/^[0-9a-f]{64}$/) })))
+    .mutation(
+      ({ ctx, input }): Promise<HolderLinkChallenge> =>
+        mapped(() => ctx.services.auth.beginHolderLink(input.account)),
+    ),
+  completeLink: publicProcedure
+    .input(
+      parser<CompleteHolderLinkInput>(
+        z.object({
+          challengeId: id,
+          authorisation: z.string().regex(/^(?:[0-9a-f]{2}){1,8192}$/),
+        }),
+      ),
+    )
+    .mutation(
+      ({ ctx, input }): Promise<HolderSession> =>
+        mapped(() => ctx.services.auth.completeHolderLink(input.challengeId, input.authorisation)),
+    ),
+});
+
 const sessionRouter = router({
   current: authenticatedProcedure.query(({ ctx }): SessionInfo => ctx.session),
   signOut: authenticatedProcedure.mutation(async ({ ctx }): Promise<{ signedOut: true }> => {
@@ -161,5 +204,6 @@ const sessionRouter = router({
 export const authRouter = router({
   organiser: organiserRouter,
   operator: operatorRouter,
+  holder: holderRouter,
   session: sessionRouter,
 });

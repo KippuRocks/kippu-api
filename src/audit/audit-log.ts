@@ -51,6 +51,7 @@ interface Row {
   organiser_id: string | null;
   operator_id: string | null;
   session_id: string | null;
+  holder_account: string | null;
   operation_id: string;
   command_kind: string;
   recorded_at: Date;
@@ -60,16 +61,18 @@ interface Row {
   completed_at: Date | null;
 }
 
-type PrincipalColumns = [string, string | null, string | null, string | null];
+type PrincipalColumns = [string, string | null, string | null, string | null, string | null];
 
 function principalColumns(principal: Principal): PrincipalColumns {
   switch (principal.kind) {
     case "anonymous":
-      return ["anonymous", null, null, null];
+      return ["anonymous", null, null, null, null];
     case "organiser":
-      return ["organiser", principal.organiserId, null, principal.sessionId];
+      return ["organiser", principal.organiserId, null, principal.sessionId, null];
     case "operator":
-      return ["operator", principal.organiserId, principal.operatorId, principal.sessionId];
+      return ["operator", principal.organiserId, principal.operatorId, principal.sessionId, null];
+    case "holder":
+      return ["holder", null, null, principal.sessionId, principal.account];
   }
 }
 
@@ -88,6 +91,12 @@ function principalOf(row: Row): Principal {
         operatorId: row.operator_id as string,
         sessionId: row.session_id as string,
       };
+    case "holder":
+      return {
+        kind: "holder",
+        account: row.holder_account as string,
+        sessionId: row.session_id as string,
+      };
     default:
       return { kind: "anonymous" };
   }
@@ -96,14 +105,24 @@ function principalOf(row: Row): Principal {
 export function createAuditLog(store: Store, now: () => Date = () => new Date()): AuditLog {
   return {
     async record({ requestId, principal, operationId, commandKind }) {
-      const [kind, organiserId, operatorId, sessionId] = principalColumns(principal);
+      const [kind, organiserId, operatorId, sessionId, holderAccount] = principalColumns(principal);
       try {
         await store.query(
           `INSERT INTO audit_log
-             (request_id, principal_kind, organiser_id, operator_id, session_id, operation_id,
-              command_kind, recorded_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-          [requestId, kind, organiserId, operatorId, sessionId, operationId, commandKind, now()],
+             (request_id, principal_kind, organiser_id, operator_id, session_id, holder_account,
+              operation_id, command_kind, recorded_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+          [
+            requestId,
+            kind,
+            organiserId,
+            operatorId,
+            sessionId,
+            holderAccount,
+            operationId,
+            commandKind,
+            now(),
+          ],
         );
       } catch (error) {
         if ((error as { code?: unknown }).code === "23505") {
@@ -132,7 +151,7 @@ export function createAuditLog(store: Store, now: () => Date = () => new Date())
 
     async find(operationId) {
       const result = await store.query<Row>(
-        `SELECT request_id, principal_kind, organiser_id, operator_id, session_id, operation_id, command_kind,
+        `SELECT request_id, principal_kind, organiser_id, operator_id, session_id, holder_account, operation_id, command_kind,
                 recorded_at, outcome, receipt_cursor, error_code, completed_at
          FROM audit_log WHERE operation_id = $1`,
         [operationId],

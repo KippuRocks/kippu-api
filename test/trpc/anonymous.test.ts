@@ -11,6 +11,8 @@ import { createCallerFactory, publicProcedure, router } from "../../src/trpc/trp
  * means adding it here, where a reviewer sees it.
  */
 const PUBLIC_PROCEDURES = [
+  "auth.holder.beginLink",
+  "auth.holder.completeLink",
   "auth.operator.redeemEnrolmentCode",
   "auth.organiser.beginSignIn",
   "auth.organiser.beginSignUp",
@@ -30,6 +32,8 @@ const services: Services = {
     beginOrganiserSignIn: refusing,
     completeOrganiserSignIn: refusing,
     redeemOperatorEnrolmentCode: refusing,
+    beginHolderLink: refusing,
+    completeHolderLink: refusing,
     authenticate: refusing,
     signOut: refusing,
   },
