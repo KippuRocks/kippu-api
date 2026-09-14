@@ -1,5 +1,12 @@
 import { p256 } from "@noble/curves/nist.js";
-import { createProfileV0, encodeAuthorisation, p256AccountId } from "@ticketto/profile-v0";
+import {
+  blake2b256,
+  createProfileV0,
+  encodeAuthorisation,
+  encodeSignedAccessPass,
+  encodeSignedCommand,
+  p256AccountId,
+} from "@ticketto/profile-v0";
 import { simulatedWebAuthnSigner, softwareP256Signer } from "@ticketto/profile-v0/testing";
 import type {
   AccessPass,
@@ -21,6 +28,7 @@ import {
   issueSponsorship,
   kmsP256Signer,
   SPONSORSHIP_SIGNING_TAG,
+  signedInputDigest,
   sponsorshipSigningPayload,
   verifySponsorship,
 } from "../src/index.js";
@@ -31,13 +39,16 @@ const profile = createProfileV0({ rpId: RP_ID });
 
 const hex = (byte: number, length: number) => byte.toString(16).padStart(2, "0").repeat(length);
 
-async function signedCommand(operationId = hex(1, 16)): Promise<SignedCommand> {
-  const organiser = softwareP256Signer();
+async function signedCommand(
+  operationId = hex(1, 16),
+  event = hex(7, 32),
+  organiser = softwareP256Signer(),
+): Promise<SignedCommand> {
   const command: Command = {
     kind: "setEventStatus",
     operationId: operationId as OperationId,
     expiresAt: 1_900_000_000_000 as Timestamp,
-    event: hex(7, 32) as EventId,
+    event: event as EventId,
     status: "Cancelled",
   } as Command;
   return { command, authorisation: await organiser.signer.sign(profile.encodeCommand(command)) };
@@ -72,33 +83,56 @@ describe("sponsorship codec", () => {
     }
   });
 
-  it("binds a command sponsorship to its operation id and a pass sponsorship to its pass id", async () => {
+  it("binds a command sponsorship to its operation id and a pass sponsorship to its pass id, each with the input's digest", async () => {
     const { signer } = sponsorKey();
     const command = await signedCommand(hex(0xab, 16));
     const pass = await signedPass(hex(0xcd, 16));
     expect(
       decodeSponsorship(await issueSponsorship(signer, command, { notionalCost: 0n })).target,
-    ).toEqual({ kind: "command", operationId: hex(0xab, 16) });
+    ).toEqual({
+      kind: "command",
+      operationId: hex(0xab, 16),
+      digest: blake2b256(encodeSignedCommand(command)),
+    });
     expect(
       decodeSponsorship(await issueSponsorship(signer, pass, { notionalCost: 0n })).target,
-    ).toEqual({ kind: "accessPass", passId: hex(0xcd, 16) });
+    ).toEqual({
+      kind: "accessPass",
+      passId: hex(0xcd, 16),
+      digest: blake2b256(encodeSignedAccessPass(pass)),
+    });
   });
 
-  it("lays out version, input kind, bound id, compact cost and the length-prefixed authorisation", () => {
+  it("the input digest is the one C3 records: BLAKE2b-256 of the profile's signed-input framing", async () => {
+    const command = await signedCommand();
+    const pass = await signedPass();
+    expect(signedInputDigest(command)).toEqual(blake2b256(encodeSignedCommand(command)));
+    expect(signedInputDigest(pass)).toEqual(blake2b256(encodeSignedAccessPass(pass)));
+  });
+
+  it("lays out version, input kind, bound id, input digest, compact cost and the length-prefixed authorisation", () => {
     const authorisation = Uint8Array.of(1, 2, 3) as Authorisation;
-    const bytes = encodeSponsorship({
-      target: { kind: "accessPass", passId: hex(0x11, 16) as PassId },
-      notionalCost: 1n,
-      authorisation,
-    });
-    expect(Array.from(bytes)).toEqual([0, 1, ...Array(16).fill(0x11), 4, 12, 1, 2, 3]);
-    const payload = sponsorshipSigningPayload(
-      { kind: "accessPass", passId: hex(0x11, 16) as PassId },
-      1n,
-    );
+    const target = {
+      kind: "accessPass",
+      passId: hex(0x11, 16) as PassId,
+      digest: new Uint8Array(32).fill(0x22),
+    } as const;
+    const bytes = encodeSponsorship({ target, notionalCost: 1n, authorisation });
+    expect(Array.from(bytes)).toEqual([
+      0,
+      1,
+      ...Array(16).fill(0x11),
+      ...Array(32).fill(0x22),
+      4,
+      12,
+      1,
+      2,
+      3,
+    ]);
+    const payload = sponsorshipSigningPayload(target, 1n);
     expect(payload.subarray(0, SPONSORSHIP_SIGNING_TAG.length)).toEqual(SPONSORSHIP_SIGNING_TAG);
     expect(Array.from(payload.subarray(SPONSORSHIP_SIGNING_TAG.length))).toEqual(
-      Array.from(bytes.subarray(0, 19)),
+      Array.from(bytes.subarray(0, 51)),
     );
   });
 
@@ -112,15 +146,22 @@ describe("sponsorship codec", () => {
       Uint8Array.of(1, ...bytes.subarray(1)),
       Uint8Array.of(0, 2, ...bytes.subarray(2)),
       // A non-minimal compact encoding of a zero cost.
-      Uint8Array.of(...bytes.subarray(0, 18), 1, 0, ...bytes.subarray(19)),
+      Uint8Array.of(...bytes.subarray(0, 50), 1, 0, ...bytes.subarray(51)),
     ];
     for (const bad of cases) expect(() => decodeSponsorship(bad)).toThrow();
   });
 
   it("refuses a notional cost outside u128", () => {
-    const target = { kind: "command", operationId: hex(1, 16) as OperationId } as const;
+    const target = {
+      kind: "command",
+      operationId: hex(1, 16) as OperationId,
+      digest: new Uint8Array(32),
+    } as const;
     expect(() => sponsorshipSigningPayload(target, -1n)).toThrow(TypeError);
     expect(() => sponsorshipSigningPayload(target, 1n << 128n)).toThrow(TypeError);
+    expect(() => sponsorshipSigningPayload({ ...target, digest: new Uint8Array(31) }, 0n)).toThrow(
+      TypeError,
+    );
   });
 });
 
@@ -152,6 +193,35 @@ describe("sponsorship verification", () => {
     });
     const other = await signedCommand(hex(2, 16));
     expect(verifySponsorship(sponsorship, other, { sponsors })).toMatchObject({
+      ok: false,
+      error: { code: "ERR-SponsorshipRefused" },
+    });
+  });
+
+  it("ERR-SponsorshipRefused: a sponsorship for command A attached to command B with the same operation id", async () => {
+    const { signer, sponsors } = sponsorKey();
+    const organiser = softwareP256Signer();
+    const id = hex(9, 16);
+    // A: an entitled command, sponsored and never submitted.
+    const commandA = await signedCommand(id, hex(7, 32), organiser);
+    // B: a different command, by the same signer, reusing A's operation id.
+    const commandB = await signedCommand(id, hex(8, 32), organiser);
+    const sponsorship = await issueSponsorship(signer, commandA, { notionalCost: 0n });
+    expect(verifySponsorship(sponsorship, commandA, { sponsors }).ok).toBe(true);
+    expect(verifySponsorship(sponsorship, commandB, { sponsors })).toEqual({
+      ok: false,
+      error: {
+        code: "ERR-SponsorshipRefused",
+        detail: "the sponsorship is bound to another input with the same id",
+      },
+    });
+  });
+
+  it("ERR-SponsorshipRefused: a sponsorship for a pass attached to another pass with the same pass id", async () => {
+    const { signer, sponsors } = sponsorKey();
+    const id = hex(10, 16);
+    const sponsorship = await issueSponsorship(signer, await signedPass(id), { notionalCost: 0n });
+    expect(verifySponsorship(sponsorship, await signedPass(id), { sponsors })).toMatchObject({
       ok: false,
       error: { code: "ERR-SponsorshipRefused" },
     });
@@ -224,7 +294,7 @@ describe("sponsor KMS signer", () => {
     expect(signer.account).toBe(p256AccountId(p256.getPublicKey(secretKey, true)));
 
     const payload = sponsorshipSigningPayload(
-      { kind: "command", operationId: hex(3, 16) as OperationId },
+      { kind: "command", operationId: hex(3, 16) as OperationId, digest: new Uint8Array(32) },
       0n,
     );
     const authorisation = await signer.sign(payload);
