@@ -1,0 +1,27 @@
+# Local stand-in for the Kippu store: PostgreSQL in Docker (AD-20).
+#
+# This is kippu-api's own instance, with its own credentials. The ledger
+# service (ticketto-offchain) runs a separate instance that kippu-api has no
+# route to (REQ-SDK-9). A managed database is not chosen yet; production
+# supplies KIPPU_DATABASE_URL and nothing else changes.
+name: kippu-api
+
+services:
+  kippu-store:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: kippu_api
+      POSTGRES_PASSWORD: kippu_api_local
+      POSTGRES_DB: kippu_api
+    ports:
+      - "127.0.0.1:54329:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kippu_api -d kippu_api"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    volumes:
+      - kippu-store:/var/lib/postgresql
+
+volumes:
+  kippu-store:

@@ -26,14 +26,40 @@ Requires Node 24 or later and pnpm (the version is pinned in `package.json`). CI
 
 ```sh
 pnpm install
+pnpm store:up    # the Kippu store: PostgreSQL 18 in Docker, on 127.0.0.1:54329
+export KIPPU_DATABASE_URL=postgres://kippu_api:kippu_api_local@127.0.0.1:54329/kippu_api
+export KIPPU_TEST_DATABASE_URL=$KIPPU_DATABASE_URL
 pnpm lint        # Biome
 pnpm typecheck
 pnpm test        # Vitest
 pnpm build       # emits dist/
+pnpm migrate     # applies pending migrations to the Kippu store (after build)
 pnpm start       # serves on $HOST:$PORT, default 0.0.0.0:8080
 pnpm lint:personal-data  # no metadata schema declares a personal-data field (after build)
 pnpm check:contract  # a client fixture installs the packed packages and compiles against them
 ```
+
+### The Kippu store
+
+`kippu-api` keeps its own facts — identity, sessions, the audit log, holds, the
+derived copy of the ledger — in PostgreSQL. It is a **separate instance, with
+separate credentials**, from the ledger service's store (`AD-20`): `kippu-api`
+reaches ledger state only through the Ticketto SDK (`REQ-SDK-9`), and no table
+here is authoritative for a Ticketto fact (`REQ-IX-1`).
+
+- `KIPPU_DATABASE_URL` is the only store configuration. The server refuses to
+  start with libpq's `PG*` variables set, or with anything naming a ledger or
+  Ticketto database.
+- Migrations are plain SQL in `migrations/`, named `NNNN_snake_case.sql`,
+  append-only, each applied in its own transaction. `pnpm migrate` applies
+  them; the server refuses to start while any is pending, or when an applied
+  one has changed.
+- Locally, `compose.yaml` runs the store in Docker; CI uses a service
+  container. A managed database is not chosen yet: in production it is
+  supplied through `KIPPU_DATABASE_URL`, and nothing else changes.
+- Store tests create a database of their own per file on
+  `KIPPU_TEST_DATABASE_URL`. Without it they are skipped locally; in CI they
+  may not be.
 
 ### Package releases
 
@@ -59,7 +85,8 @@ that is not a §10 code is never passed on; the client sees an internal error.
 
 ```sh
 docker build -t kippu-api .
-docker run --rm -p 8080:8080 kippu-api
+docker run --rm --network host -e KIPPU_DATABASE_URL kippu-api node dist/store/migrate-cli.js
+docker run --rm --network host -e KIPPU_DATABASE_URL kippu-api
 ```
 
 CI builds the image and probes its health endpoint on every pull request. The image is never pushed; the registry decision is pending.
