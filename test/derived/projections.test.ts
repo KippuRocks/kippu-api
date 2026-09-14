@@ -167,6 +167,8 @@ describeWithStore("the derived copy's projections", () => {
         value: ledgerEvent.ok ? ledgerEvent.value : null,
         sequence: lastRecordOf(id),
         authoritative: false,
+        // The fixture's events are created with no locator (REQ-MD-1 allows none).
+        metadataLocator: null,
       });
     }
     for (const id of tickets) {

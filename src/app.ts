@@ -78,6 +78,7 @@ function unavailableServices(): Services {
     },
     events: unavailableService<Services["events"]>(),
     metadata: unavailableService<Services["metadata"]>(),
+    derived: unavailableService<Services["derived"]>(),
   };
 }
 

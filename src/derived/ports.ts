@@ -1,0 +1,127 @@
+/**
+ * Reads of ledger facts from Kippu's derived copy, joined with their public
+ * metadata, for Saifu, Ibento and Ichiba (`F-025` plan §2, `AC-A3.2`).
+ *
+ * This module is imported by the tRPC context, whose type is published in
+ * `@kippu/api`: it may import nothing at runtime, and names no SDK type.
+ * Identifiers cross it as lower-case hex strings; ledger times as Unix
+ * milliseconds.
+ */
+
+/** A JSON value, as a metadata document holds it. */
+export type ReadJson =
+  | null
+  | boolean
+  | number
+  | string
+  | readonly ReadJson[]
+  | { readonly [field: string]: ReadJson };
+
+/** How far the copy had read the ledger's log when a response was read (`NFR-11`). */
+export interface ReadFreshness {
+  /** The cursor of the last log record the copy reflects; `""` before the first. */
+  readonly cursor: string;
+  /** How many log records the copy reflects. */
+  readonly records: number;
+  /** When the ledger recorded the last of them; `null` before the first. */
+  readonly lastRecordedAt: number | null;
+}
+
+/**
+ * Every view of a ledger fact says it is a copy (`REQ-IX-1`): where it and the
+ * ledger disagree, the ledger wins (`REQ-IX-2`).
+ */
+export interface CopiedFact {
+  readonly authoritative: false;
+  /** The log sequence of the last record that changed the fact. */
+  readonly sequence: number;
+}
+
+/**
+ * An event, as one object of ledger facts and platform metadata (`AC-A3.2`).
+ * Every field but `metadata` is a ledger fact.
+ */
+export interface EventView extends CopiedFact {
+  readonly id: string;
+  /** The owner's ledger account. */
+  readonly owner: string;
+  readonly status: "Active" | "Sealed" | "Cancelled" | "Finished";
+  /** `null`: issuance is unbounded (`REQ-EV-3`). */
+  readonly maxCapacity: number | null;
+  readonly issued: number;
+  readonly zones: readonly { readonly id: string; readonly kind: "Seated" | "Unseated" }[];
+  /** The stable locator the ledger records for the event's document (`REQ-MD-1`). */
+  readonly metadataLocator: string | null;
+  /**
+   * The event document at that locator (`F-026`), or `null` when there is none
+   * Kippu hosts. A client renders the event from the ledger facts alone then
+   * (`REQ-MD-2`).
+   */
+  readonly metadata: { readonly [field: string]: ReadJson } | null;
+}
+
+/** A ticket, as one object of ledger facts and its class's platform metadata. */
+export interface TicketView extends CopiedFact {
+  readonly id: string;
+  readonly event: string;
+  readonly holder: string;
+  /** The opaque `ClassId` (`REQ-TC-2`). */
+  readonly class: string;
+  readonly provenance: "Purchased" | "Granted";
+  readonly zone: string;
+  readonly placement:
+    | { readonly kind: "Seated"; readonly position: string }
+    | { readonly kind: "Unseated"; readonly discriminator: string };
+  readonly policy:
+    | { readonly kind: "Single" }
+    | { readonly kind: "Multiple"; readonly max: number; readonly until: number | null }
+    | { readonly kind: "Unlimited"; readonly until: number | null };
+  readonly restrictions: { readonly cannotResale: boolean; readonly cannotTransfer: boolean };
+  /** Recorded attendances (`INV-3`). */
+  readonly attendances: number;
+  /** The class document's locator, derived from the class id (`F-026` plan §5.1). */
+  readonly classMetadataLocator: string;
+  /** The class document, or `null` when Kippu hosts none: the class is then legible only by its ledger facts. */
+  readonly classMetadata: { readonly [field: string]: ReadJson } | null;
+}
+
+/** A ticket an account holds, with its event. */
+export interface HoldingView {
+  readonly ticket: TicketView;
+  /** `null` only if the copy holds the ticket but not yet its event, which the log order rules out. */
+  readonly event: EventView | null;
+}
+
+export interface EventRead {
+  /** `null` when the copy holds no such event — not yet, or not at all. */
+  readonly event: EventView | null;
+  readonly freshness: ReadFreshness;
+}
+
+export interface EventsRead {
+  readonly events: readonly EventView[];
+  readonly freshness: ReadFreshness;
+}
+
+export interface HoldingsRead {
+  readonly holdings: readonly HoldingView[];
+  readonly freshness: ReadFreshness;
+}
+
+export interface WaitedFor {
+  /** Whether the copy reflects the record at the cursor waited for. */
+  readonly reached: boolean;
+  readonly freshness: ReadFreshness;
+}
+
+/** What the read routers reach. */
+export interface Reads {
+  /** An event, by id. Public: browsing needs no account (`REQ-MP-7`). */
+  event(event: string): Promise<EventRead>;
+  /** The events the organiser's ledger account owns, most recently created first. */
+  organiserEvents(organiserId: string): Promise<EventsRead>;
+  /** The tickets a holder's account holds, by event (`US-D1`, `US-E1`). */
+  holdings(account: string): Promise<HoldingsRead>;
+  /** Waits, up to `timeout` ms, until the copy reflects a write's receipt cursor (`F-025` plan §5.3). */
+  waitFor(cursor: string, timeout: number): Promise<WaitedFor>;
+}
