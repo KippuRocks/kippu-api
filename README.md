@@ -13,7 +13,11 @@ per milestone.
 ## Layout
 
 The repository is a pnpm workspace. The server lives at the root (`src/`);
-packages published for clients live beside it under `packages/`.
+packages for clients live beside it under `packages/`:
+
+| Package | What it is |
+|---|---|
+| `@kippu/api` (`packages/api`) | Types of the tRPC router — contract `C5`. Declarations only |
 
 ## Development
 
@@ -26,7 +30,15 @@ pnpm typecheck
 pnpm test        # Vitest
 pnpm build       # emits dist/
 pnpm start       # serves on $HOST:$PORT, default 0.0.0.0:8080
+pnpm check:contract  # a client fixture installs the packed @kippu/api and compiles against it
 ```
+
+### Package releases
+
+Package versions are managed with Changesets (`pnpm changeset`). Nothing is
+published yet — the registry decision is pending. `pnpm check:contract` packs
+`@kippu/api` and installs the tarball into `fixtures/client` outside the
+workspace, the way a client repository would.
 
 `GET /health` answers `{"status":"ok"}`. It is an operational endpoint, outside any versioned API prefix, and not part of the `C5` contract.
 

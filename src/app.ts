@@ -1,7 +1,7 @@
 import type { AnyTRPCRouter } from "@trpc/server";
 import { fastifyTRPCPlugin } from "@trpc/server/adapters/fastify";
 import Fastify, { type FastifyInstance, type FastifyServerOptions } from "fastify";
-import { createContext } from "./trpc/context.js";
+import { createContext } from "./trpc/fastify-context.js";
 import { appRouter } from "./trpc/router.js";
 
 /** Where the `C5` tRPC contract is served. */
