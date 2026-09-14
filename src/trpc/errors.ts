@@ -68,3 +68,18 @@ export function toTRPCError(error: SpecError): TRPCError {
     cause: new SpecErrorCause(error.code),
   });
 }
+
+/**
+ * The value of an SDK result, or a thrown tRPC error carrying its §10 code
+ * (`REQ-Q-3`).
+ */
+export function unwrap<T>(
+  result:
+    | { readonly ok: true; readonly value: T }
+    | { readonly ok: false; readonly error: SpecError },
+): T {
+  if (!result.ok) {
+    throw toTRPCError(result.error);
+  }
+  return result.value;
+}

@@ -2,7 +2,7 @@ import { createTRPCClient, httpBatchLink, TRPCClientError } from "@trpc/client";
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildApp, TRPC_PREFIX } from "../src/app.js";
-import { toTRPCError } from "../src/trpc/errors.js";
+import { toTRPCError, unwrap } from "../src/trpc/errors.js";
 import { appRouter } from "../src/trpc/router.js";
 import { mergeRouters, publicProcedure, router } from "../src/trpc/trpc.js";
 
@@ -27,6 +27,12 @@ const testRouter = mergeRouters(
       notASpecCode: publicProcedure.query((): never => {
         throw toTRPCError({ code: "connection refused by 10.0.0.7:5432" });
       }),
+      thrown: publicProcedure.query((): never => {
+        throw new Error("password authentication failed for user kippu_api at 10.0.0.7");
+      }),
+      unwrapped: publicProcedure.query(() =>
+        unwrap({ ok: false, error: { code: "ERR-TicketNotFound" } }),
+      ),
     }),
   }),
 );
@@ -90,6 +96,23 @@ describe("tRPC error mapping", () => {
     expect(error.data?.errorCode).toBeNull();
     expect(error.data?.code).toBe("INTERNAL_SERVER_ERROR");
     expect(error.message).not.toContain("10.0.0.7");
+  });
+
+  it("scrubs an exception thrown inside a procedure: no message, no stack", async () => {
+    const error = await failure(() => client.sample.thrown.query());
+
+    expect(error.message).toBe("internal error");
+    expect(error.data?.code).toBe("INTERNAL_SERVER_ERROR");
+    expect(error.data?.errorCode).toBeNull();
+    expect(JSON.stringify(error.data)).not.toContain("10.0.0.7");
+    expect(error.data).not.toHaveProperty("stack");
+  });
+
+  it("REQ-Q-3: an SDK result's §10 code reaches the client through unwrap", async () => {
+    const error = await failure(() => client.sample.unwrapped.query());
+
+    expect(error.data?.errorCode).toBe("ERR-TicketNotFound");
+    expect(error.data?.httpStatus).toBe(404);
   });
 
   it("serves the root router's procedures beside the samples", async () => {

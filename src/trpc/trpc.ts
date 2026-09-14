@@ -17,6 +17,9 @@ export interface ProcedureMeta {
   readonly access?: "public" | "signed-in" | undefined;
 }
 
+/** What a client sees of any error Kippu did not mean to show it. */
+export const INTERNAL_ERROR_MESSAGE = "internal error";
+
 const t = initTRPC
   .context<Context>()
   .meta<ProcedureMeta>()
@@ -25,7 +28,15 @@ const t = initTRPC
       const data: KippuErrorData = {
         errorCode: error.cause instanceof SpecErrorCause ? error.cause.specCode : null,
       };
-      return { ...shape, data: { ...shape.data, ...data } };
+      // An internal error reaches the client with no detail: no message from
+      // wherever it arose, and never a stack (`F-020` plan §5.5). The server logs it.
+      const { stack: _stack, ...rest } = shape.data;
+      const internal = error.code === "INTERNAL_SERVER_ERROR";
+      return {
+        ...shape,
+        message: internal ? INTERNAL_ERROR_MESSAGE : shape.message,
+        data: { ...rest, ...data },
+      };
     },
   });
 
