@@ -1,0 +1,17 @@
+{
+  "name": "kippu-sponsor-client-fixture",
+  "version": "0.0.0",
+  "private": true,
+  "description": "A Ticketto client with no tRPC dependency that obtains a sponsorship from the relay's plain-HTTP API",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "sponsor": "node src/main.ts"
+  },
+  "dependencies": {
+    "@ticketto/profile-v0": "0.0.0",
+    "@ticketto/sdk": "0.0.0"
+  }
+}
