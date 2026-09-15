@@ -185,7 +185,7 @@ describeWithStore("capacity decrease", () => {
     });
   });
 
-  it("AC-A6.3: an increase, or a bound on an unbounded event, is refused without reaching the ledger", async () => {
+  it("AC-A6.3: an increase is refused without reaching the ledger", async () => {
     const bounded = await setup(5);
     expect(
       await refusal(() =>
@@ -195,17 +195,37 @@ describeWithStore("capacity decrease", () => {
         }),
       ),
     ).toEqual({ code: "UNPROCESSABLE_CONTENT", errorCode: "ERR-CapacityProofRequired" });
-    const unbounded = await setup(null);
+    expect(await capacityWrites(bounded.event)).toBe(0);
+  });
+
+  it("REQ-EV-4: bounding an unbounded event is a decrease: no proof, down to its tickets issued plus outstanding holds", async () => {
+    const context = await setup(null);
+    await grant(context);
+    await hold(context);
+
     expect(
-      await refusal(() =>
-        unbounded.organiser.client.events.decreaseCapacity.mutate({
-          event: unbounded.event,
-          capacity: 100,
+      await refusalWithReason(() =>
+        context.organiser.client.events.decreaseCapacity.mutate({
+          event: context.event,
+          capacity: 1,
         }),
       ),
-    ).toEqual({ code: "UNPROCESSABLE_CONTENT", errorCode: "ERR-CapacityProofRequired" });
-    expect(await capacityWrites(bounded.event)).toBe(0);
-    expect(await capacityWrites(unbounded.event)).toBe(0);
+    ).toEqual({
+      code: "UNPROCESSABLE_CONTENT",
+      errorCode: "ERR-CapacityBelowIssuance",
+      reason: "held",
+    });
+    expect(await onLedger(context.event)).toMatchObject({ maxCapacity: null });
+    expect(await capacityWrites(context.event)).toBe(0);
+
+    expect(
+      await context.organiser.client.events.decreaseCapacity.mutate({
+        event: context.event,
+        capacity: 2,
+      }),
+    ).toMatchObject({ event: context.event, capacity: 2 });
+    expect(await onLedger(context.event)).toMatchObject({ maxCapacity: 2, issued: 1 });
+    expect(await capacityWrites(context.event)).toBe(1);
   });
 
   it("ERR-NotOwner: only the event's organiser changes its capacity", async () => {

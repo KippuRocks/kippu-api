@@ -436,8 +436,10 @@ export const eventsRouter = router({
    * Decreases the event's capacity (`US-A6`): down to the tickets issued plus
    * outstanding holds, never below (`ERR-CapacityBelowIssuance`, with
    * `error.data.reason` `held` when the holds make the difference; `REQ-HD-4`).
-   * An increase is refused with `ERR-CapacityProofRequired`: it needs an approved
-   * capacity proof (`capacityProofs.request`). The ledger's verdict — `ERR-EventSealed`, say — is passed on.
+   * Bounding an event that has none is a decrease too. An increase is refused with
+   * `ERR-CapacityProofRequired`: it needs an approved capacity proof
+   * (`capacityProofs.request`). The ledger's verdict — `ERR-EventSealed`, say — is
+   * passed on.
    */
   decreaseCapacity: organiserProcedure
     .input(parser<DecreaseCapacityInput>(decreaseCapacityInput))

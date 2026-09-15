@@ -69,12 +69,12 @@ const isUniqueViolation = (error: unknown) => (error as { code?: unknown }).code
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 /**
- * Whether a capacity is an increase: what `events.decreaseCapacity` refuses with
- * `ERR-CapacityProofRequired` (`T-021-07`) — a higher bound, removing the bound
- * (`REQ-EV-7`), or any bound on an event with none.
+ * Whether a capacity is an increase: a higher bound, or removing the bound
+ * (`REQ-EV-7`). Bounding an event that has none is a decrease, from unbounded to
+ * the bound, and needs no proof (`F-008` plan §5.7a): `events.decreaseCapacity`.
  */
 function isIncrease(current: number | null, requested: number | null): boolean {
-  return current === null ? requested !== null : requested === null || requested > current;
+  return current !== null && (requested === null || requested > current);
 }
 
 /**

@@ -30,13 +30,15 @@ export interface Capacity {
 /**
  * Capacity decreases (`T-021-07`; `US-A6`, `REQ-EV-4`, `REQ-HD-4`; `F-021` plan
  * §5.4). Decreasing is always permitted down to what the event already bears —
- * never below it — and needs no proof.
+ * never below it — and needs no proof. Bounding an event that has none is a
+ * decrease, from unbounded to the bound (`F-008` plan §5.7a); removing a bound
+ * is an increase (`REQ-EV-7`), which this call cannot express.
  *
  * Under the event's allocation lock (`src/sales/allocation.ts`), so no hold or
  * issuance lands between the check and the ledger's verdict:
- * 1. an increase — a capacity above the current one, or any capacity on an
- *    unbounded event — is refused with `ERR-CapacityProofRequired` before it
- *    reaches the ledger: increases go through proof review (`T-021-08`);
+ * 1. an increase — a capacity above the current bound — is refused with
+ *    `ERR-CapacityProofRequired` before it reaches the ledger: increases go
+ *    through proof review (`T-021-08`);
  * 2. on an `Active` event, a capacity below issued tickets plus outstanding holds
  *    — `F-022`'s `canDecreaseCapacity`, counted with the shared allocation
  *    module — is refused with `ERR-CapacityBelowIssuance` (`REQ-HD-4`), with
@@ -57,7 +59,7 @@ export function createCapacity(options: CapacityOptions): Capacity {
         await lockEventAllocations(client, input.event);
         // Read under the lock: capacity and issued as the ledger has them now.
         const { event } = await ownedEvent(ledger, authority, organiserId, input.event as EventId);
-        if (event.maxCapacity === null || input.capacity > event.maxCapacity) {
+        if (event.maxCapacity !== null && input.capacity > event.maxCapacity) {
           throw new SpecCodeError(
             "ERR-CapacityProofRequired",
             "an increase needs a capacity proof approved by Kippu operations",

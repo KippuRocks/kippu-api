@@ -58,6 +58,7 @@ describeWithStore("reconciling scheduled finishes left running", () => {
       authority: harness.authority,
       ledger: harness.ledger,
       status: { finish: (...args) => finish(...args) },
+      saleActions: () => harness.sales.organiserActions,
       operationLifetime: OPERATION_LIFETIME,
       now: () => new Date(clock),
       onError: () => {},
@@ -220,6 +221,73 @@ describeWithStore("reconciling scheduled finishes left running", () => {
       errorCode: "ERR-InvalidTransition",
     });
     expect(await submissions(scheduled)).toEqual(["rejected"]);
+  });
+
+  /** A refused submission of the run, recorded before the process stopped. */
+  const refusedSubmission = (scheduled: Scheduled) =>
+    harness.database.store.query(
+      `INSERT INTO audit_log
+         (request_id, principal_kind, organiser_id, operation_id, command_kind, recorded_at,
+          outcome, error_code, completed_at)
+       VALUES ($1, 'system', $2, $3, 'setEventStatus', $4, 'rejected', 'ERR-InvalidTransition', $4)`,
+      [
+        scheduled.request.requestId,
+        scheduled.organiser.organiserId,
+        randomBytes(16).toString("hex"),
+        new Date(clock),
+      ],
+    );
+
+  /** The event's sale closures, oldest first: who closed them, and who reopened them. */
+  const closures = async (event: string) =>
+    (
+      await harness.database.store.query<{
+        closed_request_id: string;
+        reopened_request_id: string | null;
+      }>(
+        `SELECT closed_request_id, reopened_request_id FROM event_sale_closures
+         WHERE event = $1 ORDER BY id`,
+        [event],
+      )
+    ).rows;
+
+  it("REQ-HD-4: a refused run that had closed the event's sales reopens them, as a refused finish does live", async () => {
+    const scheduled = await due();
+    // The run closed sales, and its finish was refused; the process stopped before reopening them.
+    await harness.sales.organiserActions.releaseAll(scheduled.event, {
+      requestId: scheduled.request.requestId,
+      actor: scheduled.request.principal,
+    });
+    await refusedSubmission(scheduled);
+    await leftRunning(scheduled);
+
+    expect(await schedules.runDue()).toMatchObject({ reconciled: 1, ran: 0 });
+    expect(await scheduleOf(scheduled)).toMatchObject({
+      status: "refused",
+      errorCode: "ERR-InvalidTransition",
+    });
+    expect(await closures(scheduled.event)).toEqual([
+      {
+        closed_request_id: scheduled.request.requestId,
+        reopened_request_id: scheduled.request.requestId,
+      },
+    ]);
+  });
+
+  it("REQ-HD-4: a refused run leaves closed the sales something else closed", async () => {
+    const scheduled = await due();
+    await harness.sales.organiserActions.releaseAll(scheduled.event, {
+      requestId: "organiser-seal",
+      actor: scheduled.organiser.request.principal,
+    });
+    await refusedSubmission(scheduled);
+    await leftRunning(scheduled);
+
+    expect(await schedules.runDue()).toMatchObject({ reconciled: 1, ran: 0 });
+    expect(await scheduleOf(scheduled)).toMatchObject({ status: "refused" });
+    expect(await closures(scheduled.event)).toEqual([
+      { closed_request_id: "organiser-seal", reopened_request_id: null },
+    ]);
   });
 
   it("REQ-EV-12: a run another live process holds is left to it", async () => {
