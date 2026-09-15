@@ -1,7 +1,10 @@
 import { createHmac, randomBytes, randomUUID } from "node:crypto";
+import type { Cursor } from "@ticketto/sdk";
 import { hashSecret } from "../auth/service.js";
 import { RefusedRequest, SpecCodeError } from "../authority/errors.js";
 import type { Classes } from "../classes/classes.js";
+import type { Freshness } from "../derived/freshness.js";
+import { MAX_WAIT_MS } from "../derived/reads.js";
 import type { PlacementInput } from "../events/ports.js";
 import type { Zones } from "../events/zones.js";
 import type { KippuTicketto } from "../ledger/ticketto.js";
@@ -21,6 +24,9 @@ import {
   type Sales,
 } from "./ports.js";
 
+/** The longest a checkout read waits for its ticket to be visible, in ms: as `derived.waitFor`. */
+export const MAX_TICKET_WAIT_MS = MAX_WAIT_MS;
+
 /** Bytes of randomness in a checkout token. */
 export const CHECKOUT_TOKEN_BYTES = 32;
 
@@ -37,6 +43,8 @@ export interface CheckoutsOptions {
   readonly zones: Pick<Zones, "canonicalPosition">;
   /** Issuance holds (`T-022-03`). */
   readonly holds: Pick<Holds, "place">;
+  /** How far Kippu's copy has read the ledger (`F-025`): whether an issued ticket is visible. */
+  readonly freshness: Pick<Freshness, "waitFor">;
   readonly now?: () => Date;
   readonly randomBytes?: (length: number) => Uint8Array;
 }
@@ -140,7 +148,7 @@ function pairingCodeOf(
 export function createCheckouts(
   options: CheckoutsOptions,
 ): Omit<Sales, "inventory" | "pay" | "cancel" | "paymentWebhook"> {
-  const { store, ledger, classes, zones, holds, now = () => new Date() } = options;
+  const { store, ledger, classes, zones, holds, freshness, now = () => new Date() } = options;
   const random = options.randomBytes ?? ((length: number) => randomBytes(length));
 
   const expiresAtOf = (row: CheckoutRow): Date | null =>
@@ -206,6 +214,7 @@ export function createCheckouts(
               asset: row.refund_asset as string,
               reason: row.refund_reason,
             },
+      ticketVisible: false,
       createdAt: row.created_at.toISOString(),
       expiresAt: expiresAt === null ? null : expiresAt.toISOString(),
     };
@@ -312,8 +321,12 @@ export function createCheckouts(
       return { token, checkout: checkoutOf(await find(token), token) };
     },
 
-    async checkout(token) {
-      return checkoutOf(await find(token), token);
+    async checkout(token, read = {}) {
+      const view = checkoutOf(await find(token), token);
+      const cursor = view.sale?.status === "issued" ? view.sale.cursor : null;
+      if (cursor === null) return view;
+      const wait = Math.min(Math.max(read.waitForTicketMs ?? 0, 0), MAX_TICKET_WAIT_MS);
+      return { ...view, ticketVisible: await freshness.waitFor(cursor as Cursor, wait) };
     },
 
     async linkCheckout(request, handoffToken): Promise<HandoffLink> {

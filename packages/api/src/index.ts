@@ -33,6 +33,7 @@ export type {
   CheckoutTokenInput,
   ClassOnSale,
   ConfirmLinkInput,
+  GetCheckoutInput,
   HandoffLink,
   HandoffTokenInput,
   HoldOutcome,

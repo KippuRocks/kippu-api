@@ -11,6 +11,7 @@ import {
   type OrganiserAuthority,
 } from "../../src/authority/authority.js";
 import { softwareOrganiserKms } from "../../src/authority/kms.js";
+import { createFreshness } from "../../src/derived/freshness.js";
 import { createEvents } from "../../src/events/service.js";
 import { type KippuTicketto, makeTicketto } from "../../src/ledger/ticketto.js";
 import { createMetadataDocuments } from "../../src/metadata/documents.js";
@@ -122,10 +123,12 @@ export async function eventsHarness(options: EventsHarnessOptions = {}): Promise
   });
   const events = createEvents({ store: database.store, authority, ledger });
   const payments = createTestPaymentProvider();
+  const freshness = createFreshness({ store: database.store, pollInterval: 50 });
   const salesOptions = (overrides: Partial<SalesOptions> = {}): SalesOptions => ({
     store: database.store,
     ledger,
     authority,
+    freshness,
     classes: events.classes,
     zones: events.zones,
     seats: events.seats,
@@ -248,6 +251,7 @@ export async function eventsHarness(options: EventsHarnessOptions = {}): Promise
 
     async close() {
       await app.close();
+      await freshness.close();
       await database.drop();
     },
   };

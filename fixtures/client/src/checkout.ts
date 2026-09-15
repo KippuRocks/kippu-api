@@ -65,6 +65,11 @@ export async function payAndWait(token: string, returnTo: string): Promise<strin
     cancelUrl: `${returnTo}/cancelled`,
   });
   void payment.url;
-  const { sale, refund } = await ichiba.sales.checkout.get.query({ token });
-  return sale?.status === "issued" ? sale.ticket : (refund?.reason ?? null);
+  // "Your ticket is in Saifu" only once Kippu's copy shows it (NFR-11).
+  const { sale, refund, ticketVisible } = await ichiba.sales.checkout.get.query({
+    token,
+    waitForTicketMs: 10_000,
+  });
+  if (sale?.status === "issued") return ticketVisible ? sale.ticket : null;
+  return refund?.reason ?? null;
 }

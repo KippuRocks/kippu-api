@@ -97,6 +97,7 @@ describeWithStore("checkout sessions", () => {
       payment: null,
       sale: null,
       refund: null,
+      ticketVisible: false,
       createdAt: expect.any(String),
       expiresAt: expect.any(String),
     });
