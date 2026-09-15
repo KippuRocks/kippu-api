@@ -60,11 +60,28 @@ export interface DerivedQueries {
   event(id: EventId): Promise<DerivedRead<ProjectedEvent | null>>;
   /** Every event an account owns on the ledger, most recently created first. */
   eventsOwnedBy(account: AccountId): Promise<DerivedRead<readonly ProjectedEvent[]>>;
+  /**
+   * One page of the events on sale: `Active` in the copy, with at least one
+   * `Purchased` class Kippu defines for them. Most recently created first; each
+   * with its place in that order, to continue after (`T-025-10`).
+   */
+  eventsOnSale(
+    limit: number,
+    after: EventPosition | null,
+  ): Promise<
+    DerivedRead<readonly { readonly event: ProjectedEvent; readonly position: EventPosition }[]>
+  >;
   ticket(id: TicketId): Promise<DerivedRead<Projected<Ticket> | null>>;
   /** Every ticket an account holds, ordered by event, then ticket. */
   holdings(account: AccountId): Promise<DerivedRead<readonly Projected<Ticket>[]>>;
   /** A ticket's recorded attendances; `null` before its first. */
   attendance(ticket: TicketId): Promise<DerivedRead<Projected<Attendance> | null>>;
+}
+
+/** Where an event sits in creation order: the log sequence of its creation, then its id. */
+export interface EventPosition {
+  readonly created: number;
+  readonly id: EventId;
 }
 
 interface EventRow {
@@ -231,6 +248,37 @@ export function createDerivedQueries(store: Store): DerivedQueries {
         [account],
       );
       return { result: rows.map(eventOf), freshness };
+    },
+    async eventsOnSale(limit, after) {
+      // Joins Kippu's own class definitions: whether an event sells tickets is
+      // Kippu data (REQ-TC-2); its status is the copy's.
+      const { rows, freshness } = await read<EventRow & { created: string }>(
+        store,
+        `SELECT head.*, ${EVENT_COLUMNS}, s.created
+         FROM head
+         LEFT JOIN LATERAL (
+           SELECT e.id AS event_id, l.sequence AS created
+           FROM derived_events e
+           JOIN derived_log l ON l.event_id = e.id AND l.event_sequence = 0
+           WHERE e.status = 'Active'
+             AND EXISTS (
+               SELECT 1 FROM ticket_classes k WHERE k.event = e.id AND k.provenance = 'Purchased'
+             )
+             AND ($1::bigint IS NULL OR (l.sequence, e.id) < ($1::bigint, $2::text))
+           ORDER BY l.sequence DESC, e.id DESC
+           LIMIT $3
+         ) s ON true
+         LEFT JOIN derived_events e ON e.id = s.event_id
+         ORDER BY s.created DESC, e.id DESC`,
+        [after?.created ?? null, after?.id ?? null, limit],
+      );
+      return {
+        result: rows.map((row) => ({
+          event: eventOf(row),
+          position: { created: int(row.created), id: row.id as EventId },
+        })),
+        freshness,
+      };
     },
     async ticket(id) {
       const { rows, freshness } = await read<TicketRow>(

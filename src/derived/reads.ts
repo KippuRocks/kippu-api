@@ -1,6 +1,7 @@
 import { classLocator, METADATA_ORIGIN } from "@kippu/metadata-schema";
 import type { AccountId, Cursor, EventId, Ticket } from "@ticketto/sdk";
 import type { OrganiserAuthority } from "../authority/authority.js";
+import { RefusedRequest } from "../authority/errors.js";
 import type { MetadataStorage } from "../metadata/storage.js";
 import type { Store } from "../store/store.js";
 import type { CopyFreshness, Freshness } from "./freshness.js";
@@ -15,9 +16,26 @@ import type {
 import {
   createDerivedQueries,
   type DerivedQueries,
+  type EventPosition,
   type Projected,
   type ProjectedEvent,
 } from "./queries.js";
+
+/** A page token: the position of the last event on the page before, `<created>.<EventId>`. */
+const PAGE = /^(0|[1-9][0-9]{0,15})\.([0-9a-f]{64})$/;
+
+function pageOf(position: EventPosition): string {
+  return `${position.created}.${position.id}`;
+}
+
+function positionOf(page: string): EventPosition {
+  const match = PAGE.exec(page);
+  const created = match === null ? Number.NaN : Number(match[1]);
+  if (match === null || !Number.isSafeInteger(created)) {
+    throw new RefusedRequest("the page token is not one this index issued");
+  }
+  return { created, id: match[2] as EventId };
+}
 
 /** The longest a client may ask `waitFor` to wait, in ms. */
 export const MAX_WAIT_MS = 10_000;
@@ -123,6 +141,19 @@ export function createReads(options: ReadsOptions): Reads {
       const read = await queries.event(id as EventId);
       return {
         event: read.result === null ? null : await eventView(read.result),
+        freshness: freshnessOf(read.freshness),
+      };
+    },
+
+    async eventsOnSale(limit, page) {
+      const after = page === null ? null : positionOf(page);
+      // One more than asked for, to know whether another page follows.
+      const read = await queries.eventsOnSale(limit + 1, after);
+      const shown = read.result.slice(0, limit);
+      const last = shown.at(-1);
+      return {
+        events: await Promise.all(shown.map(({ event }) => eventView(event))),
+        nextPage: read.result.length > limit && last !== undefined ? pageOf(last.position) : null,
         freshness: freshnessOf(read.freshness),
       };
     },
