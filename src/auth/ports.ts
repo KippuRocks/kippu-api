@@ -1,6 +1,7 @@
 import type { Reads } from "../derived/ports.js";
 import type { Events } from "../events/ports.js";
 import type { Metadata } from "../metadata/ports.js";
+import type { Operators } from "../operators/ports.js";
 import type { Sales } from "../sales/ports.js";
 import type {
   AuthenticationResponseJSON,
@@ -139,7 +140,7 @@ export type AuthFailure =
   | "ceremony-expired"
   /** The passkey did not verify. */
   | "credential-rejected"
-  /** The enrolment code is unknown, already redeemed, or expired. */
+  /** The enrolment code is unknown, already redeemed, voided, or expired. */
   | "enrolment-code-rejected"
   /**
    * A proof of control was refused. Deliberately one failure, whichever check
@@ -201,4 +202,5 @@ export interface Services {
   readonly metadata: Metadata;
   readonly derived: Reads;
   readonly sales: Sales;
+  readonly operators: Operators;
 }

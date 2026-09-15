@@ -109,6 +109,7 @@ function unavailableServices(): Services {
     metadata: unavailableService<Services["metadata"]>(),
     derived: unavailableService<Services["derived"]>(),
     sales: unavailableService<Services["sales"]>(),
+    operators: unavailableService<Services["operators"]>(),
   };
 }
 
