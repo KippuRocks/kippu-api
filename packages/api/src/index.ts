@@ -9,13 +9,17 @@
  * `error.data.errorCode`.
  */
 
-/** Checkout (`F-022`): what Ichiba and Saifu exchange over a checkout and its Saifu handoff. */
+/** Checkout (`F-022`): what Ichiba and Saifu exchange over a checkout, its Saifu handoff and its hold. */
 export type {
   BeginCheckoutInput,
   BegunCheckout,
   Checkout,
   CheckoutAccount,
+  CheckoutHold,
   CheckoutTokenInput,
+  HoldOutcome,
+  HoldRefusal,
+  HoldStatus,
   SaifuHandoff,
 } from "../../../src/sales/ports.js";
 export type { AppRouter } from "../../../src/trpc/router.js";

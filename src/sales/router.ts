@@ -10,6 +10,7 @@ import {
   CheckoutError,
   type CheckoutFailure,
   type CheckoutTokenInput,
+  type HoldOutcome,
 } from "./ports.js";
 
 /**
@@ -29,6 +30,8 @@ function parser<T>(schema: z.ZodType): (value: unknown) => T {
 const TRANSPORT_CODE: Record<CheckoutFailure, TRPCError["code"]> = {
   "unknown-checkout": "NOT_FOUND",
   "linked-to-another-account": "CONFLICT",
+  "account-required": "PRECONDITION_FAILED",
+  "hold-ended": "CONFLICT",
 };
 
 /**
@@ -120,6 +123,26 @@ const checkoutRouter = router({
       ({ ctx, input }): Promise<Checkout> =>
         mapped(() =>
           ctx.services.sales.linkCheckout(
+            { requestId: ctx.requestId, principal: ctx.principal },
+            input.token,
+          ),
+        ),
+    ),
+  /**
+   * Places the checkout's hold, before any payment (`REQ-HD-1`, `REQ-HD-3`). It is
+   * counted, in one transaction, against the event's capacity, the class's quota
+   * and the seat; when any is exhausted the answer is `refused`, with the reason
+   * — `sold-out`, `class-sold-out` or `seat-taken` — for the buyer to see before
+   * paying (`AC-B4.4`). A checkout with no holder account yet is
+   * `PRECONDITION_FAILED`; one whose hold lapsed or was released is `CONFLICT`.
+   * Asking again while the hold is outstanding answers with the same hold.
+   */
+  hold: publicProcedure
+    .input(parser<CheckoutTokenInput>(tokenInput))
+    .mutation(
+      ({ ctx, input }): Promise<HoldOutcome> =>
+        mapped(() =>
+          ctx.services.sales.hold(
             { requestId: ctx.requestId, principal: ctx.principal },
             input.token,
           ),

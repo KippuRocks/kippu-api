@@ -19,6 +19,7 @@ import { type ReceiptTracker, trackReceipts } from "./ledger/receipts.js";
 import { type KippuTicketto, makeTicketto } from "./ledger/ticketto.js";
 import { createMetadataDocuments } from "./metadata/documents.js";
 import type { MetadataStorage } from "./metadata/storage.js";
+import { type LapseSweeper, lapseSweeper } from "./sales/holds.js";
 import { createSales } from "./sales/service.js";
 import type { Store } from "./store/store.js";
 
@@ -74,6 +75,8 @@ export interface WiringOptions {
   readonly ledgerBackend?: Backend;
   /** Receives every failure of the derived copy's background reader. Defaults to `console.error`. */
   readonly onReaderError?: (error: unknown) => void;
+  /** Receives every failure of the background task recording lapsed holds. Defaults to `console.error`. */
+  readonly onLapseSweepError?: (error: unknown) => void;
 }
 
 export interface DomainServices {
@@ -84,6 +87,8 @@ export interface DomainServices {
   /** The derived copy's reader over the ledger's log (`NFR-11`); not started. */
   readonly reader: DerivedReader;
   readonly freshness: Freshness;
+  /** Records lapsed holds in the background (`T-022-03`); not started. */
+  readonly lapses: LapseSweeper;
 }
 
 /** Storage holding nothing: reads find no document, and writes are refused. */
@@ -181,7 +186,14 @@ export function createDomainServices(
     authority,
     ...(publicUrl === undefined ? {} : { publicUrl }),
   });
-  const sales = createSales({ store, ledger, classes: events.classes, zones: events.zones });
+  const sales = createSales({
+    store,
+    ledger,
+    classes: events.classes,
+    zones: events.zones,
+    seats: events.seats,
+  });
+  const lapses = lapseSweeper(sales.holds, options.onLapseSweepError);
   const base = { auth, events, derived, sales };
   const services =
     options.metadataStorage === undefined
@@ -196,7 +208,7 @@ export function createDomainServices(
             ...(publicUrl === undefined ? {} : { publicUrl }),
           }),
         };
-  return { services, ledger, reader, freshness };
+  return { services, ledger, reader, freshness, lapses };
 }
 
 export interface KippuServer {
@@ -218,14 +230,22 @@ export function createServer(
   options: FastifyServerOptions = {},
   wiring: WiringOptions = {},
 ): KippuServer {
-  const { services, ledger, reader, freshness } = createDomainServices(config, store, wiring);
+  const { services, ledger, reader, freshness, lapses } = createDomainServices(
+    config,
+    store,
+    wiring,
+  );
   const app = buildApp(options, undefined, services);
   return {
     app,
     ledger,
-    start: () => reader.start(),
+    start: () => {
+      reader.start();
+      lapses.start();
+    },
     async close() {
       await reader.stop();
+      await lapses.stop();
       await freshness.close();
       await app.close();
     },

@@ -82,6 +82,7 @@ describeWithStore("checkout sessions", () => {
       class: s.classId,
       placement: { kind: "Unseated" },
       account: { state: "handoff", handoff: { token } },
+      hold: null,
       createdAt: expect.any(String),
     });
 
@@ -243,6 +244,7 @@ describeWithStore("checkout sessions", () => {
         },
         classes: harness.events.classes,
         zones: harness.events.zones,
+        seats: harness.events.seats,
       });
       await expect(
         sales.beginCheckout({ requestId: "r", principal: ANONYMOUS }, generalAdmission(s)),
