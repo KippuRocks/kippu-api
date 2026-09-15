@@ -235,6 +235,15 @@ The `events` router is the organiser's. Every procedure acts for the signed-in o
   - Saifu links the guest's holder account (`auth.holder.*`) and redeems the token in that holder session. Redemption claims the invitation atomically and runs granted issuance for the invitation's organiser, audited against the holder's session: the ticket is issued once.
   - An unknown token is `NOT_FOUND`; a redeemed one `CONFLICT`. Every refusal also carries an `InvitationRefusal` in `error.data.reason` — `unknown-invitation`, `already-redeemed`, `seat-held`, `seat-taken`, `sold-out`, `class-sold-out` — so Saifu can tell the holder which applies. A reason is a platform refusal, never a §10 code. A refused issuance — quota, capacity, a ledger rule — reopens the invitation; one with no ledger verdict leaves it `failed`, since the ticket may exist.
 
+### Operator authorisation (`F-024`)
+
+Gate staff are managed like staff, not like key holders (`US-E5`). Operators, their enrolment and their sessions live entirely in Kippu: the ledger never learns who an operator is (`REQ-OP-1`), and nothing in the `operators` router writes to it.
+
+- **Operator accounts** (`T-024-01`): an organiser creates named operators (`operators.create`) and lists them with their live session count (`operators.list`). The name is the organiser's own label and stays in Kippu (`NFR-6`).
+- **Enrolment** (`operators.issueEnrolmentCode`): a one-time code — 16 random bytes, base64url — returned once, stored as a SHA-256, valid for an hour. Iriguchi redeems it with `auth.operator.redeemEnrolmentCode` for a 24-hour operator session. Codes issued earlier stay valid until they expire or are redeemed.
+- **Revoking sessions** (`operators.revokeSessions`) ends every live session of the operator at once and voids their unredeemed codes; the operator enrols again only with a code issued afterwards. Revoking a session is separate from revoking a grant; either stops admissions.
+- An operator of another organiser is `NOT_FOUND`, with `error.data.reason` `unknown-operator`.
+
 ### Checkout, handoff pairing and holds (`F-022`)
 
 - **Checkout** (`sales.checkout.*`): `begin` for what the buyer picked returns the page's `token`, once. With a holder session the checkout is linked at once; otherwise it carries a Saifu handoff with a separate `handoffToken`, which only links.

@@ -20,6 +20,7 @@ import { type ReceiptTracker, trackReceipts } from "./ledger/receipts.js";
 import { type KippuTicketto, makeTicketto } from "./ledger/ticketto.js";
 import { createMetadataDocuments } from "./metadata/documents.js";
 import type { MetadataStorage } from "./metadata/storage.js";
+import { createOperators } from "./operators/service.js";
 import { type LapseSweeper, lapseSweeper } from "./sales/holds.js";
 import { PAYMENT_WEBHOOK_PATH } from "./sales/payment.js";
 import type { PaymentProvider } from "./sales/payments/ports.js";
@@ -99,7 +100,7 @@ export interface WiringOptions {
 
 export interface DomainServices {
   /** Metadata editing is absent without object storage; `buildApp` fills it with a failing service. */
-  readonly services: Pick<Services, "auth" | "events" | "derived" | "sales"> &
+  readonly services: Pick<Services, "auth" | "events" | "derived" | "sales" | "operators"> &
     Partial<Pick<Services, "metadata">>;
   readonly ledger: KippuTicketto;
   /** The derived copy's reader over the ledger's log (`NFR-11`); not started. */
@@ -120,7 +121,8 @@ const NO_METADATA_STORAGE: Pick<MetadataStorage, "get"> = { get: async () => nul
 /**
  * The domain services the server mounts, over the ledger its environment names
  * (`T-021-11`): identity and holder linking (`F-020`); events, zones, classes
- * and granted issuance (`F-021`); checkout (`F-022`); the derived copy's reader
+ * and granted issuance (`F-021`); checkout (`F-022`); operator accounts (`F-024`);
+ * the derived copy's reader
  * and read routes (`F-025`); and, given object storage, metadata document editing (`F-026`).
  *
  * In `development` and `test` they run over `backend-memory`, a software KMS for
@@ -233,7 +235,8 @@ export function createDomainServices(
     { lapseExpired: () => sales.payments.sweep(`sweep-${randomUUID()}`) },
     options.onLapseSweepError,
   );
-  const base = { auth, events, derived, sales };
+  const operators = createOperators({ store });
+  const base = { auth, events, derived, sales, operators };
   const services =
     options.metadataStorage === undefined
       ? base

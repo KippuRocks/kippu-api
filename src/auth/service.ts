@@ -365,7 +365,8 @@ export function createAuth({
         const redeemed = await client.query<{ operator_id: string; organiser_id: string }>(
           `UPDATE operator_enrolment_codes AS c SET redeemed_at = $2
            FROM operators AS o
-           WHERE c.code_hash = $1 AND c.redeemed_at IS NULL AND c.expires_at > $2
+           WHERE c.code_hash = $1 AND c.redeemed_at IS NULL AND c.voided_at IS NULL
+             AND c.expires_at > $2
              AND o.id = c.operator_id
            RETURNING c.operator_id, o.organiser_id`,
           [hashSecret(code), now()],

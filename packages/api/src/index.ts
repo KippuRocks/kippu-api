@@ -20,6 +20,15 @@ export type {
   SetSaleAssetInput,
   TicketClass,
 } from "../../../src/events/ports.js";
+/** Operator authorisation (`F-024`): operator accounts, for Ibento and Iriguchi. */
+export type {
+  CreateOperatorInput,
+  EnrolmentCode,
+  OperatorAccount,
+  OperatorInput,
+  OperatorRefusal,
+  RevokedSessions,
+} from "../../../src/operators/ports.js";
 /** Checkout (`F-022`): what Ichiba and Saifu exchange over a checkout, its Saifu handoff and its hold. */
 export type {
   BeginCheckoutInput,
