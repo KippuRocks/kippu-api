@@ -1,10 +1,8 @@
 import {
   type AccountId,
-  type Authorisation,
   type Discriminator,
   type EventId,
   LOG_START,
-  type OperationId,
   type TicketId,
 } from "@ticketto/sdk";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -18,7 +16,7 @@ import {
   describeWithStore,
   type TestDatabase,
 } from "../support/database.js";
-import { scriptedLog, wholeLog } from "../support/derived.js";
+import { wholeLog } from "../support/derived.js";
 import {
   classId,
   type MemoryLedger,
@@ -106,43 +104,29 @@ describeWithStore("waitFor and freshness", () => {
   });
 
   it("NFR-11: a transfer's new holder is visible right after waitFor resolves", async () => {
-    // The M1 ledger rules do not accept transfers yet (`T-008-08`, M4), so the
-    // transfer record is appended to a log that otherwise is backend-memory's own.
-    const { holder, event } = await setUp();
-    const ticket = await ledger.issue(event, zoneId(0x7a), 1, holder);
-    const prefix = (await wholeLog(ledger.kippu.log)).map(({ cursor: _, ...record }) => record);
-    const scripted = scriptedLog(prefix);
-    const copy = reader({ log: scripted.log, pollInterval: 20 });
+    await ledger.registerOrganiser();
+    const holder = await ledger.registerHolder(0x21);
+    const receiver = await ledger.registerHolder(0x22);
+    const event = await ledger.createEvent(0x01, [zoneId(0x7a)]);
+    const ticket = await ledger.issue(event, zoneId(0x7a), 1, holder.account);
+    const copy = reader();
     copy.start();
     const fresh = freshness();
-    const receiver = hex(32, 0x42) as AccountId;
 
-    const cursor = scripted.append({
-      recordedAt: (prefix.at(-1)?.recordedAt ?? 0) + 1,
-      event: { id: event, sequence: prefix.filter((r) => r.event?.id === event).length },
-      entry: {
-        command: {
-          kind: "transferTicket",
-          operationId: hex(16, 0xa1) as OperationId,
-          expiresAt: 1_900_000_000_000,
-          event,
-          ticket,
-          receiver,
-        },
-        authorisation: new Uint8Array(0) as Authorisation,
-      },
-      presentedAt: null,
-    });
+    // The holder transfers straight through the ledger; Kippu learns of it only through the log.
+    const receipt = await settled(
+      ledger.direct.transferTicket(holder, { event, ticket, receiver: receiver.account }),
+    );
 
-    expect(await fresh.waitFor(cursor, 30_000)).toBe(true);
+    expect(await fresh.waitFor(receipt.cursor, 30_000)).toBe(true);
     const queries = createDerivedQueries(database.store);
     const read = await queries.ticket(ticket);
-    expect(read.result?.value.holder).toBe(receiver);
-    expect(read.freshness).toMatchObject({ cursor, records: prefix.length + 1 });
-    expect((await queries.holdings(receiver)).result.map((held) => held.value.id)).toEqual([
+    expect(read.result?.value.holder).toBe(receiver.account);
+    expect(read.freshness.cursor).toBe(receipt.cursor);
+    expect((await queries.holdings(receiver.account)).result.map((held) => held.value.id)).toEqual([
       ticket,
     ]);
-    expect((await queries.holdings(holder)).result).toEqual([]);
+    expect((await queries.holdings(holder.account)).result).toEqual([]);
   });
 
   it("a waiter in another process is woken by the batch's notification, not by polling", async () => {

@@ -1,5 +1,5 @@
 import { eventLocator } from "@kippu/metadata-schema";
-import type { Authorisation, EventId, EventStatus, OperationId } from "@ticketto/sdk";
+import type { EventId } from "@ticketto/sdk";
 import type { TRPCError } from "@trpc/server";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { buildApp, TRPC_PREFIX } from "../../src/app.js";
@@ -14,7 +14,6 @@ import type { Context } from "../../src/trpc/context.js";
 import { appRouter } from "../../src/trpc/router.js";
 import { createCallerFactory } from "../../src/trpc/trpc.js";
 import { describeWithStore } from "../support/database.js";
-import { scriptedLog, wholeLog } from "../support/derived.js";
 import {
   type EventsHarness,
   eventsHarness,
@@ -172,41 +171,26 @@ describeWithStore("the public index of events on sale", () => {
   });
 
   it("cancelled and finished events are not listed, nor sealed ones", async () => {
-    // The M2 ledger rules do not accept setEventStatus yet (T-008-04), so the
-    // status changes are appended, as hand-built records, to the real log (F-025 plan §7a).
     const organiser = await harness.organiser();
     const cancelled = await eventWith(organiser, ["Purchased"]);
     const finished = await eventWith(organiser, ["Purchased"]);
     const sealed = await eventWith(organiser, ["Purchased"]);
     const active = await eventWith(organiser, ["Purchased"]);
 
-    const prefix = (await wholeLog(harness.ledger.log)).map(({ cursor: _, ...record }) => record);
-    let recordedAt = (prefix.at(-1)?.recordedAt ?? 0) + 1;
-    const status = (event: string, to: EventStatus, n: number) => ({
-      recordedAt: recordedAt++,
-      event: {
-        id: event as EventId,
-        sequence: prefix.filter((record) => record.event?.id === event).length,
-      },
-      entry: {
-        command: {
-          kind: "setEventStatus" as const,
-          operationId: hex(16, n) as OperationId,
-          expiresAt: 1_900_000_000_000,
-          event: event as EventId,
-          status: to,
-        },
-        authorisation: new Uint8Array(0) as Authorisation,
-      },
-      presentedAt: null,
-    });
-    const { log } = scriptedLog([
-      ...prefix,
-      status(cancelled, "Cancelled", 1),
-      status(finished, "Finished", 2),
-      status(sealed, "Sealed", 3),
-    ]);
-    await catchUp(log);
+    // Each status set on the ledger with the organiser's authority, and judged by its rules.
+    for (const [event, status] of [
+      [cancelled, "Cancelled"],
+      [finished, "Finished"],
+      [sealed, "Sealed"],
+    ] as const) {
+      const changed = await harness.authority.relay(
+        organiser.organiserId,
+        organiser.request,
+        (signer) => harness.ledger.setEventStatus(signer, { event: event as EventId, status }),
+      );
+      expect(await changed).toMatchObject({ ok: true });
+    }
+    await catchUp();
 
     const page = await anonymous().derived.events.onSale();
     expect(ids(page)).toEqual([active]);

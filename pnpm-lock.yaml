@@ -569,12 +569,12 @@ packages:
     engines: {node: '>=24'}
 
   '@ticketto/binding-offchain@file:vendor/libticketto/ticketto-binding-offchain-0.0.0.tgz':
-    resolution: {integrity: sha512-gI3CBJhWOfM3UchzW66YrEL2T8PmogB/zfUyClO2g/SB9ulLrpSa7jPtFjS7zs0HAHqHRwYCtHb8Xgye5GUBTw==, tarball: file:vendor/libticketto/ticketto-binding-offchain-0.0.0.tgz}
+    resolution: {integrity: sha512-J0mNgmEhx0uUSB4cuJAemONdpimPsdq2JAxhRt8h0uPy9N6zkOkcxXVxikRe+uDLAYuCoZ9rwe6Gfj3LglPCLQ==, tarball: file:vendor/libticketto/ticketto-binding-offchain-0.0.0.tgz}
     version: 0.0.0
     engines: {node: '>=24'}
 
   '@ticketto/ledger-rules@file:vendor/libticketto/ticketto-ledger-rules-0.0.0.tgz':
-    resolution: {integrity: sha512-ymWNacspFhzXTYBbxyQsW1B6UdLJVlyLBc8r6zV8jPln+/aQgVemXxKDeu1WTrgXh1EJsOQqDE+oHWzW2Wu3/w==, tarball: file:vendor/libticketto/ticketto-ledger-rules-0.0.0.tgz}
+    resolution: {integrity: sha512-pCdBLRsOmpIQgrtyEPQZT+UD5hyY37oyNoFMT2H2TN1r9ZsGdSpnE/2Nt3F7WxISpCK8uxVuI3UPNEqmQUOqpw==, tarball: file:vendor/libticketto/ticketto-ledger-rules-0.0.0.tgz}
     version: 0.0.0
     engines: {node: '>=24'}
 
