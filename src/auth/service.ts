@@ -137,15 +137,16 @@ export function createAuth({
     principal:
       | { kind: "organiser"; organiserId: string }
       | { kind: "operator"; organiserId: string; operatorId: string }
-      | { kind: "holder"; account: string },
+      | { kind: "holder"; account: string; credential: string },
     lifetimeMs: number,
   ): Promise<IssuedSession> {
     const token = randomBytes(32).toString("base64url");
     const expiresAt = new Date(now().getTime() + lifetimeMs);
     await queryable.query(
       `INSERT INTO sessions
-         (id, token_hash, principal_kind, organiser_id, operator_id, holder_account, created_at, expires_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+         (id, token_hash, principal_kind, organiser_id, operator_id, holder_account, created_at, expires_at,
+          holder_credential)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
       [
         randomUUID(),
         hashSecret(token),
@@ -155,6 +156,7 @@ export function createAuth({
         principal.kind === "holder" ? principal.account : null,
         now(),
         expiresAt,
+        principal.kind === "holder" ? principal.credential : null,
       ],
     );
     return { token, expiresAt: expiresAt.toISOString() };
@@ -493,7 +495,8 @@ export function createAuth({
         );
         const session = await issueSession(
           client,
-          { kind: "holder", account: row.account },
+          // The credential whose proof of control opened the session (T-025-13).
+          { kind: "holder", account: row.account, credential: claimed.credential },
           HOLDER_SESSION_MS,
         );
         await client.query("COMMIT");

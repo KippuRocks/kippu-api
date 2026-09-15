@@ -13,6 +13,7 @@ import type {
   EventRead,
   EventsOnSalePage,
   EventsRead,
+  HolderCredentialsRead,
   HoldingsRead,
   WaitedFor,
 } from "./ports.js";
@@ -105,6 +106,17 @@ export const derivedRouter = router({
         ({ ctx, input }): Promise<AdmissionFlagsRead> =>
           ctx.services.derived.admissionFlags(ctx.principal.organiserId, input.event),
       ),
+  }),
+  credentials: router({
+    /**
+     * Saifu: the credentials registered to the linked holder's own account, in
+     * registration order, marking the one this session was linked with
+     * (`REQ-CP-6`). Holder sessions only; no other principal reads them.
+     */
+    mine: holderProcedure.query(
+      ({ ctx }): Promise<HolderCredentialsRead> =>
+        ctx.services.derived.holderCredentials(ctx.principal.account, ctx.principal.sessionId),
+    ),
   }),
   holdings: router({
     /** Saifu: the tickets the linked holder's account holds, each with its class metadata and event. */
