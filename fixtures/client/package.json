@@ -2,7 +2,7 @@
   "name": "kippu-api-client-fixture",
   "version": "0.0.0",
   "private": true,
-  "description": "A client repository that installs the packed @kippu/api and compiles typed calls against it",
+  "description": "A client repository that installs the packed @kippurocks/api and compiles typed calls against it",
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit"

@@ -1,5 +1,5 @@
 {
-  "name": "@kippu/metadata-schema",
+  "name": "@kippurocks/metadata-schema",
   "version": "0.0.0",
   "description": "JSON Schemas for Kippu's public metadata documents (C6)",
   "license": "UNLICENSED",

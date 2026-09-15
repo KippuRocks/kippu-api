@@ -1,4 +1,4 @@
-import type { KmsP256Key } from "@kippu/sponsorship";
+import type { KmsP256Key } from "@kippurocks/sponsorship";
 import { createProfileV0, registrationAccount } from "@ticketto/profile-v0";
 import {
   type Command,

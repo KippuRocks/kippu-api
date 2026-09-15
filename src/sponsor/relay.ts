@@ -9,7 +9,7 @@
  * `GET /health` is an operational endpoint: it answers only when the derived
  * copy can be read, and says how far the copy has read the ledger's log.
  */
-import { issueSponsorship, type SponsoredInput } from "@kippu/sponsorship";
+import { issueSponsorship, type SponsoredInput } from "@kippurocks/sponsorship";
 import { decodeSignedAccessPass, decodeSignedCommand } from "@ticketto/profile-v0";
 import type { Cursor, Result, Signer } from "@ticketto/sdk";
 import Fastify, { type FastifyInstance, type FastifyServerOptions } from "fastify";

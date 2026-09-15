@@ -1,5 +1,5 @@
-import { kmsP256Signer, verifySponsorship } from "@kippu/sponsorship";
-import { softwareKmsP256Key } from "@kippu/sponsorship/testing";
+import { kmsP256Signer, verifySponsorship } from "@kippurocks/sponsorship";
+import { softwareKmsP256Key } from "@kippurocks/sponsorship/testing";
 import { createProfileV0, encodeSignedCommand } from "@ticketto/profile-v0";
 import type {
   Command,

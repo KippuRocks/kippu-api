@@ -2,12 +2,12 @@
  * Validating metadata documents against the schemas they declare (`REQ-MD-4`,
  * `F-026` plan §5.2, §5.4).
  *
- * Every schema `@kippu/metadata-schema` publishes is compiled under a strict
+ * Every schema `@kippurocks/metadata-schema` publishes is compiled under a strict
  * JSON Schema 2020-12 validator with formats. The schemas are closed, so a
  * field they do not declare — a personal-data field among them (`NFR-6`) — is
  * refused.
  */
-import { schemas } from "@kippu/metadata-schema";
+import { schemas } from "@kippurocks/metadata-schema";
 import { Ajv2020, type ErrorObject } from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
 

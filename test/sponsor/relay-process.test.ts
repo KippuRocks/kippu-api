@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
-import { kmsP256Signer } from "@kippu/sponsorship";
-import { softwareKmsP256Key } from "@kippu/sponsorship/testing";
+import { kmsP256Signer } from "@kippurocks/sponsorship";
+import { softwareKmsP256Key } from "@kippurocks/sponsorship/testing";
 import { createProfileV0 } from "@ticketto/profile-v0";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ConfigError } from "../../src/config.js";

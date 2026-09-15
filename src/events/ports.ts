@@ -3,7 +3,7 @@
  * an organiser's behalf (`F-021`; `REQ-OA-1`).
  *
  * This module is imported by the tRPC context, whose type is published in
- * `@kippu/api`: it may import nothing at runtime, and names no SDK type.
+ * `@kippurocks/api`: it may import nothing at runtime, and names no SDK type.
  * Identifiers cross it as lower-case hex strings.
  */
 

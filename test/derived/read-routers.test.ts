@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { classLocator, eventLocator } from "@kippu/metadata-schema";
+import { classLocator, eventLocator } from "@kippurocks/metadata-schema";
 import type { AccountId, ClassId, Discriminator, EventId, TicketId, ZoneId } from "@ticketto/sdk";
 import type { TRPCError } from "@trpc/server";
 import { afterAll, afterEach, beforeAll, expect, it, vi } from "vitest";

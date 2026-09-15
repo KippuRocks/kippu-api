@@ -8,7 +8,7 @@
 // low S, plus the public key (C2).
 //
 // No KMS provider is chosen. A managed provider's adapter plugs in here; until
-// then the software key in `@kippu/sponsorship/testing` stands in for it.
+// then the software key in `@kippurocks/sponsorship/testing` stands in for it.
 
 import { p256 } from "@noble/curves/nist.js";
 import {

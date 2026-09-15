@@ -21,10 +21,10 @@ importers:
       '@bloque/payments':
         specifier: 0.2.1
         version: 0.2.1
-      '@kippu/metadata-schema':
+      '@kippurocks/metadata-schema':
         specifier: workspace:*
         version: link:packages/metadata-schema
-      '@kippu/sponsorship':
+      '@kippurocks/sponsorship':
         specifier: workspace:*
         version: link:packages/sponsorship
       '@simplewebauthn/server':

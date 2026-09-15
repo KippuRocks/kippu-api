@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { classLocator, eventLocator } from "@kippu/metadata-schema";
+import { classLocator, eventLocator } from "@kippurocks/metadata-schema";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { JsonValue } from "../../src/metadata/ports.js";
 import { checkStoredDocuments, foreignReferences } from "../../src/metadata/self-contained.js";

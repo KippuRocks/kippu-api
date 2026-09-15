@@ -17,9 +17,9 @@ packages for clients live beside it under `packages/`:
 
 | Package | What it is |
 |---|---|
-| `@kippu/api` (`packages/api`) | Types of the tRPC router — contract `C5`. Declarations only |
-| `@kippu/metadata-schema` (`packages/metadata-schema`) | JSON Schemas for the public metadata documents — contract `C6` — and the personal-data field lint |
-| `@kippu/sponsorship` (`packages/sponsorship`) | Sponsorship codec and verification, and the sponsor's `p256` KMS signer (`F-023`). Consumed by `ticketto-offchain` |
+| `@kippurocks/api` (`packages/api`) | Types of the tRPC router — contract `C5`. Declarations only |
+| `@kippurocks/metadata-schema` (`packages/metadata-schema`) | JSON Schemas for the public metadata documents — contract `C6` — and the personal-data field lint |
+| `@kippurocks/sponsorship` (`packages/sponsorship`) | Sponsorship codec and verification, and the sponsor's `p256` KMS signer (`F-023`). Consumed by `ticketto-offchain` |
 
 `@ticketto/sdk` and `@ticketto/profile-v0` are not published to a registry. They
 are vendored as `pnpm pack` tarballs from a pinned `libticketto` commit
@@ -78,7 +78,7 @@ Kippu sponsors every ledger write (`REQ-SP-1`, `AD-18` A) through a relay that r
 
 - **Read-only access to the derived copy, plus organiser account ids, and nothing else.** Migration `0011` creates `kippu_sponsor_relay_reader`, a role that cannot log in and holds `SELECT` on the `derived_*` tables, including credential registrations (`0024`). It also holds `SELECT` on `sponsor_relay_organiser_accounts` (`0028`), a view of organisers' ledger account ids and nothing else of `organiser_ledger_accounts`. A deployment creates the relay's own login role and grants it that role. The relay connects with `KIPPU_SPONSOR_DERIVED_DATABASE_URL`, and its transactions are read only as well. It refuses to start with `KIPPU_DATABASE_URL`, libpq's `PG*` variables, or anything naming the ledger's store.
 - **The sponsor key.** No KMS provider is chosen. Outside production, `KIPPU_SPONSOR_SOFTWARE_SECRET_KEY` (64 hex characters) is the key of the software stand-in behind `KmsP256Key`. `KIPPU_SPONSOR_ENVIRONMENT=production` refuses to start until a provider's adapter replaces it.
-- **The client.** `createRelaySponsor` from `@kippu/sponsorship` is the SDK's `Sponsor` over this API, for kippu-api, Saifu and Iriguchi. A test drives kippu-api's SDK factory through it end to end (`test/sponsor/sponsor-client.test.ts`).
+- **The client.** `createRelaySponsor` from `@kippurocks/sponsorship` is the SDK's `Sponsor` over this API, for kippu-api, Saifu and Iriguchi. A test drives kippu-api's SDK factory through it end to end (`test/sponsor/sponsor-client.test.ts`).
 - **The API** is plain HTTP and JSON, documented in [`docs/sponsor-relay.md`](docs/sponsor-relay.md). `fixtures/sponsor-client` is a client with no tRPC dependency; CI installs it outside the workspace and obtains a sponsorship from the built relay (`scripts/check-sponsor-client.sh`).
 - **Verified signers** (`T-023-09`). Before any entitlement is considered, an input's authorisation must verify with the V0 profile against a credential registration of its account in the derived copy. An account's first registration is instead verified against the registration it carries. A forged or unregistered authorisation is refused, and never counts against another account's registration limit. `KIPPU_SPONSOR_HOLDER_RP_ID` (required) is the holder credentials' RP id the profile verifies with.
 - **Entitlements** (`src/sponsor/entitlements.ts`, `F-023` §5.3). `POST /v0/sponsor` takes a signed command or pass, framed `{ "input": { "kind", "bytes" } }` as `C4` frames it. It returns a sponsorship only when an entitlement covers the input:
@@ -113,7 +113,7 @@ Event and class documents, the schemas they declare, and the images they referen
 
 - **Object storage.** `src/metadata/storage.ts` speaks S3 to any S3-compatible store. Locally and in CI that store is MinIO. A provider is configured through the same `KIPPU_METADATA_S3_*` keys. Every object is stored with its `Content-Type` and `Cache-Control`.
 - **CDN.** `src/metadata/edge.ts` (`pnpm metadata:edge`) stands in for the CDN. It serves objects with no authentication and open CORS (`Access-Control-Allow-Origin: *`, never credentials). It sends `Cache-Control: public, max-age=60`, so an edit is visible within a minute, plus `ETag` revalidation, and refuses writes. A real CDN in front of the bucket must be configured to behave the same way. The bucket itself stays private.
-- **Schemas.** `pnpm metadata:publish-schemas` stores every schema file of `@kippu/metadata-schema`, byte for byte, at the key its `$id` names.
+- **Schemas.** `pnpm metadata:publish-schemas` stores every schema file of `@kippurocks/metadata-schema`, byte for byte, at the key its `$id` names.
 
 ```sh
 pnpm store:up    # also starts MinIO on 127.0.0.1:59000, with the kippu-metadata and kippu-proofs buckets
@@ -209,13 +209,13 @@ Writes Kippu never sees, sent directly by Saifu and Iriguchi, are covered by the
 
 Kippu holds and exercises each organiser's authority over their events on the ledger; organisers never handle ledger credentials (`US-A2`). `createOrganiserAuthority` (`src/authority/authority.ts`) is the only way to sign with it.
 
-- **One `p256` key per organiser**, held in a KMS behind `OrganiserKms` (`src/authority/kms.ts`). A key is reached through `@kippu/sponsorship`'s `KmsP256Key`, as the sponsor's is. The organiser's ledger account is the key's `p256` account.
+- **One `p256` key per organiser**, held in a KMS behind `OrganiserKms` (`src/authority/kms.ts`). A key is reached through `@kippurocks/sponsorship`'s `KmsP256Key`, as the sponsor's is. The organiser's ledger account is the key's `p256` account.
 - **No KMS provider is chosen.** In `development` and `test`, `softwareOrganiserKms` stands in: keys in process memory, lost on exit, like `backend-memory`'s ledger. In `production`, `organiserKmsFor` refuses until a provider's adapter implements `OrganiserKms`.
 - **The Kippu store holds no key material.** `organiser_ledger_accounts` keeps the key's reference in the KMS, its public key, its account and its self-registration, with the request that caused the key to be created.
 - **Provisioning is lazy.** An organiser's first write creates their key, signs its self-registration once that row exists, and relays `registerCredential` (`REQ-CP-6`) before anything else is signed.
 - **Audit before signing (`NFR-7`).** `authority.relay` goes through `relay`, so the audit row is written first. The organiser's signer then refuses to reach the KMS unless the command already has a pending audit row. A signature by an organiser's key therefore exists only with a prior audit row.
 
-`@kippu/sponsorship` is a workspace dependency of the server, so `pnpm build`, `pnpm typecheck` and `pnpm test` build it first (`pnpm build:deps`).
+`@kippurocks/sponsorship` is a workspace dependency of the server, so `pnpm build`, `pnpm typecheck` and `pnpm test` build it first (`pnpm build:deps`).
 
 ### Events, classes and granted issuance (`F-021`)
 
@@ -314,7 +314,7 @@ Content-Type: application/json
 
 Package versions are managed with Changesets (`pnpm changeset`). Nothing is
 published yet — the registry decision is pending. `pnpm check:contract` packs
-`@kippu/api` and `@kippu/metadata-schema` and installs the tarballs into
+`@kippurocks/api` and `@kippurocks/metadata-schema` and installs the tarballs into
 `fixtures/client` outside the workspace, the way a client repository would.
 
 `GET /health` answers `{"status":"ok"}`. It is an operational endpoint, outside any versioned API prefix, and not part of the `C5` contract.

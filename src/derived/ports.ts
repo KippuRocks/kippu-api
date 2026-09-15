@@ -3,7 +3,7 @@
  * metadata, for Saifu, Ibento and Ichiba (`F-025` plan §2, `AC-A3.2`).
  *
  * This module is imported by the tRPC context, whose type is published in
- * `@kippu/api`: it may import nothing at runtime, and names no SDK type.
+ * `@kippurocks/api`: it may import nothing at runtime, and names no SDK type.
  * Identifiers cross it as lower-case hex strings; ledger times as Unix
  * milliseconds.
  */

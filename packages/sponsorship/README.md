@@ -1,4 +1,4 @@
-# @kippu/sponsorship
+# @kippurocks/sponsorship
 
 Sponsorships for Kippu's sponsor relay (`F-023`, `T-023-01`): the sponsor's
 signed undertaking to relay one signed command or signed access pass and bear
@@ -32,7 +32,7 @@ SCALE throughout; decoding accepts only the canonical encoding.
 ## Use
 
 ```ts
-import { issueSponsorship, kmsP256Signer, verifySponsorship } from "@kippu/sponsorship";
+import { issueSponsorship, kmsP256Signer, verifySponsorship } from "@kippurocks/sponsorship";
 
 const sponsor = kmsP256Signer(key); // the sponsor's p256 KMS key
 const sponsorship = await issueSponsorship(sponsor, signedInput, { notionalCost: 0n });
@@ -57,7 +57,7 @@ fee, a balance or a funding step (`REQ-SP-1a`). It uses `fetch` only, and runs o
 Node 24 and Hermes.
 
 ```ts
-import { createRelaySponsor } from "@kippu/sponsorship";
+import { createRelaySponsor } from "@kippurocks/sponsorship";
 
 const sponsor = createRelaySponsor({
   url: "https://sponsor.example",
@@ -85,5 +85,5 @@ does not verify under the key.
 
 **No KMS provider is chosen yet.** A managed provider's adapter implements
 `KmsP256Key`; nothing else changes. Until then, `softwareKmsP256Key` from
-`@kippu/sponsorship/testing` stands in for it in development and tests. Its
+`@kippurocks/sponsorship/testing` stands in for it in development and tests. Its
 secret key is plain bytes in memory: never use it for a deployed sponsor.

@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { classLocator, eventLocator } from "@kippu/metadata-schema";
+import { classLocator, eventLocator } from "@kippurocks/metadata-schema";
 import { type Command, LOG_START, type LogRecord, type TicketId } from "@ticketto/sdk";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { describeWithStore } from "../support/database.js";

@@ -2,7 +2,7 @@
  * Kippu operations reviewers (`T-021-16`; `F-021` plan §5.4, "Reviewers").
  *
  * This module is imported by the tRPC context, whose type is published in
- * `@kippu/api`: it may import only modules that import nothing at runtime.
+ * `@kippurocks/api`: it may import only modules that import nothing at runtime.
  */
 
 import type { IssuedSession } from "../auth/ports.js";

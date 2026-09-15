@@ -1,4 +1,4 @@
-import type { AppRouter, EventPassWindow, InvitationRefusal, SaleAsset } from "@kippu/api";
+import type { AppRouter, EventPassWindow, InvitationRefusal, SaleAsset } from "@kippurocks/api";
 import { createTRPCClient, httpBatchLink, TRPCClientError } from "@trpc/client";
 
 function organiserClient(token: string) {

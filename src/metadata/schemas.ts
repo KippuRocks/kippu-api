@@ -1,6 +1,6 @@
 /**
  * Publishing the metadata schemas at their stable URLs (`REQ-MD-4`, `F-026`
- * §5.2): every schema file `@kippu/metadata-schema` exports is stored, byte for
+ * §5.2): every schema file `@kippurocks/metadata-schema` exports is stored, byte for
  * byte, at the object key its `$id` names under the public URL. A document's
  * `$schema` therefore resolves to the very file it was validated against.
  */
@@ -12,7 +12,7 @@ import type { MetadataStorage } from "./storage.js";
 /** The media type of a JSON Schema (JSON Schema 2020-12, core §4.2). */
 export const SCHEMA_CONTENT_TYPE = "application/schema+json";
 
-/** A schema file export of `@kippu/metadata-schema`: `./<document>/<major>.<minor>.json`. */
+/** A schema file export of `@kippurocks/metadata-schema`: `./<document>/<major>.<minor>.json`. */
 const SCHEMA_EXPORT = /^\.\/[a-z][a-z0-9-]*\/\d+\.\d+\.json$/;
 
 export interface SchemaFile {
@@ -22,10 +22,10 @@ export interface SchemaFile {
   readonly bytes: Uint8Array;
 }
 
-/** Every schema file `@kippu/metadata-schema` exports. */
+/** Every schema file `@kippurocks/metadata-schema` exports. */
 export async function schemaFiles(): Promise<readonly SchemaFile[]> {
   const require = createRequire(import.meta.url);
-  const manifestPath = require.resolve("@kippu/metadata-schema/package.json");
+  const manifestPath = require.resolve("@kippurocks/metadata-schema/package.json");
   const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as {
     exports: Record<string, unknown>;
   };
@@ -35,7 +35,7 @@ export async function schemaFiles(): Promise<readonly SchemaFile[]> {
     const bytes = await readFile(join(dirname(manifestPath), target));
     const schema = JSON.parse(bytes.toString("utf8")) as { $id?: unknown };
     if (typeof schema.$id !== "string") {
-      throw new Error(`@kippu/metadata-schema${subpath.slice(1)} declares no $id`);
+      throw new Error(`@kippurocks/metadata-schema${subpath.slice(1)} declares no $id`);
     }
     files.push({ id: schema.$id, bytes: new Uint8Array(bytes) });
   }

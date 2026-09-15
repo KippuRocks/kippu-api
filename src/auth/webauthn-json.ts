@@ -2,7 +2,7 @@
  * The WebAuthn Level 3 JSON forms the organiser sign-in exchange carries.
  *
  * Declared here, with no import, because they appear in the published router
- * type (`@kippu/api`): a client must compile against them without the server's
+ * type (`@kippurocks/api`): a client must compile against them without the server's
  * WebAuthn library. They mirror the JSON that browser helpers such as
  * `@simplewebauthn/browser` consume and produce.
  */

@@ -1,5 +1,5 @@
 /**
- * `pnpm metadata:publish-schemas` — stores every `@kippu/metadata-schema` schema
+ * `pnpm metadata:publish-schemas` — stores every `@kippurocks/metadata-schema` schema
  * at its stable URL's object key, in the configured bucket.
  */
 import { loadMetadataConfig } from "./config.js";

@@ -1,4 +1,4 @@
-import type { AppRouter } from "@kippu/api";
+import type { AppRouter } from "@kippurocks/api";
 import { createTRPCClient, httpBatchLink } from "@trpc/client";
 
 /**

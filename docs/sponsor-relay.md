@@ -57,7 +57,7 @@ Implementation: `src/sponsor/` in this repository.
 ### What a sponsorship is
 
 Opaque to clients: pass the bytes through. For implementers, its format is
-`@kippu/sponsorship`'s (`packages/sponsorship/README.md`): it binds the input's
+`@kippurocks/sponsorship`'s (`packages/sponsorship/README.md`): it binds the input's
 operation id — a pass's pass id — and the digest of its signed-input framing,
 carries a notional cost, and is signed by a sponsor account the ledger service
 is configured to accept. A sponsorship attached to any other input is refused.

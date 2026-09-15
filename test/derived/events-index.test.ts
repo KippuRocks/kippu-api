@@ -1,4 +1,4 @@
-import { eventLocator } from "@kippu/metadata-schema";
+import { eventLocator } from "@kippurocks/metadata-schema";
 import type { EventId } from "@ticketto/sdk";
 import type { TRPCError } from "@trpc/server";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
