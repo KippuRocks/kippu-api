@@ -10,6 +10,11 @@ import type { EventInput, EventPassWindow, EventsRequest, SetPassWindowInput } f
 /** The shortest pass window an organiser may set: 10 seconds (`F-021` plan, "Pass window"). */
 export const MIN_PASS_WINDOW_MS = 10_000;
 
+/** An event's window when its organiser has set none: the profile's default, within the ledger's maximum. */
+export function defaultPassWindow(maxPassWindow: number): number {
+  return Math.min(DEFAULT_PASS_WINDOW, maxPassWindow);
+}
+
 export interface PassWindows {
   get(organiserId: string, input: EventInput): Promise<EventPassWindow>;
   set(
@@ -46,7 +51,7 @@ export function createPassWindows(options: PassWindowsOptions): PassWindows {
       `the ledger's maximum pass window must be at least ${MIN_PASS_WINDOW_MS} ms`,
     );
   }
-  const defaultWindow = Math.min(DEFAULT_PASS_WINDOW, maxPassWindow);
+  const defaultWindow = defaultPassWindow(maxPassWindow);
 
   const read = async (event: string): Promise<EventPassWindow> => {
     const row = (

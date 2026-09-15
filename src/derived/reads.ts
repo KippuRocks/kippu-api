@@ -2,6 +2,8 @@ import { classLocator, METADATA_ORIGIN } from "@kippu/metadata-schema";
 import type { AccountId, Cursor, EventId, Ticket } from "@ticketto/sdk";
 import type { OrganiserAuthority } from "../authority/authority.js";
 import { RefusedRequest } from "../authority/errors.js";
+import { defaultPassWindow } from "../events/pass-window.js";
+import { ledgerLimits } from "../ledger/rules.js";
 import type { MetadataStorage } from "../metadata/storage.js";
 import { type AdmissionReports, createAdmissionReports } from "../operators/reports.js";
 import type { Store } from "../store/store.js";
@@ -10,6 +12,7 @@ import type { CopyFreshness, Freshness } from "./freshness.js";
 import type {
   EventView,
   HoldingView,
+  PassWindowView,
   ReadFreshness,
   ReadJson,
   Reads,
@@ -51,6 +54,11 @@ export interface ReadsOptions {
   /** The public origin Kippu serves metadata from (`AD-22`); defaults to `https://meta.kippu.rocks`. */
   readonly publicUrl?: string;
   readonly queries?: DerivedQueries;
+  /**
+   * The ledger's maximum pass window, in ms (`ledgerLimits`), which caps the
+   * default window. Defaults to ledger-rules' own maximum.
+   */
+  readonly maxPassWindow?: number;
   /** Admission reports from gates (`F-024`), for flags; defaults to the store's. */
   readonly admissionReports?: Pick<AdmissionReports, "list">;
 }
@@ -87,6 +95,7 @@ export function createReads(options: ReadsOptions): Reads {
   const { store, freshness, storage, authority } = options;
   const origin = new URL(options.publicUrl ?? METADATA_ORIGIN).origin;
   const queries = options.queries ?? createDerivedQueries(store);
+  const defaultWindow = defaultPassWindow(options.maxPassWindow ?? ledgerLimits().maxPassWindow);
   const admissionReports = options.admissionReports ?? createAdmissionReports({ store });
 
   const document = async (locator: string | null): Promise<Document | null> => {
@@ -110,11 +119,24 @@ export function createReads(options: ReadsOptions): Reads {
     }
   };
 
+  const passWindow = async (event: string): Promise<PassWindowView> => {
+    const row = (
+      await store.query<{ window_ms: number }>(
+        "SELECT window_ms FROM event_pass_windows WHERE event = $1",
+        [event],
+      )
+    ).rows[0];
+    return row === undefined
+      ? { windowMs: defaultWindow, isDefault: true }
+      : { windowMs: row.window_ms, isDefault: false };
+  };
+
   const eventView = async (event: ProjectedEvent): Promise<EventView> => ({
     ...event.value,
     zones: event.value.zones.map(({ id, kind }) => ({ id, kind })),
     metadataLocator: event.metadataLocator,
     metadata: await document(event.metadataLocator),
+    passWindow: await passWindow(event.value.id),
     sequence: event.sequence,
     authoritative: false,
   });
