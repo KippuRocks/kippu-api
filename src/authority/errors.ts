@@ -25,7 +25,12 @@ export class SpecCodeError extends Error {
  * message, with no §10 code.
  */
 export class RefusedRequest extends Error {
-  readonly transport: "BAD_REQUEST" | "NOT_FOUND" | "CONFLICT" | "PRECONDITION_FAILED";
+  readonly transport:
+    | "BAD_REQUEST"
+    | "FORBIDDEN"
+    | "NOT_FOUND"
+    | "CONFLICT"
+    | "PRECONDITION_FAILED";
   /** A machine-readable platform reason, carried in `error.data.reason`; `null` for none. */
   readonly reason: string | null;
 

@@ -22,12 +22,15 @@ export type {
 } from "../../../src/events/ports.js";
 /** Operator authorisation (`F-024`): operator accounts and grants, for Ibento and Iriguchi. */
 export type {
+  CheckInput,
+  CheckRefusal,
   CreateOperatorInput,
   EnrolmentCode,
   GrantIdInput,
   GrantInput,
   ListGrantsInput,
   OperatorAccount,
+  OperatorAuthorisation,
   OperatorGrant,
   OperatorInput,
   OperatorRefusal,
