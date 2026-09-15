@@ -2,12 +2,20 @@
  * Which payment provider checkout uses (`T-022-01`; `F-022` plan §5.4), read
  * from the environment.
  *
+ * `KIPPU_PAYMENTS_PROVIDER` names it: `test` or `bloque`.
+ * - `production` must name `bloque`.
+ * - `staging` must name one, with no default: `test` for a stack with no real
+ *   provider (kippu-e2e), `bloque` otherwise.
+ * - `development` and `test` may leave it unset: Bloque when its credentials are
+ *   set, the test provider otherwise.
+ * - `test` is refused in `production`, and whenever any Bloque credential is set,
+ *   so the two are never both active.
+ *
  * Bloque's credentials are environment configuration, supplied for a
  * deployment and never committed: `KIPPU_BLOQUE_PAYMENTS_MODE`,
  * `KIPPU_BLOQUE_PAYMENTS_SECRET_KEY` and `KIPPU_BLOQUE_PAYMENTS_WEBHOOK_SECRET`,
- * all three or none. With none, the deterministic test provider is used — only
- * where the ledger is `backend-memory` (`development`, `test`); `staging` and
- * `production` refuse to take payments without a real provider.
+ * all three or none. `KIPPU_PUBLIC_URL` is kippu-api's public origin, where
+ * webhooks are sent.
  */
 import type { Config, Environment } from "../../config.js";
 import type { BloquePaymentsConfig } from "./bloque.js";
@@ -57,19 +65,51 @@ const KEYS = [
 /** A secret key's prefix for each mode: a sandbox key never reaches production, nor the reverse. */
 const KEY_PREFIX = { sandbox: "sk_test_", production: "sk_live_" } as const;
 
+const PROVIDERS = ["test", "bloque"] as const;
+
 export function loadPaymentsConfig(
   ledgerEnvironment: Config["ledgerEnvironment"],
   env: Environment = process.env,
 ): PaymentsConfig {
   const publicUrl = readPublicUrl(env.KIPPU_PUBLIC_URL);
   const set = KEYS.filter((key) => env[key] !== undefined && env[key] !== "");
-  if (set.length === 0) {
-    if (ledgerEnvironment === "development" || ledgerEnvironment === "test") {
-      return { provider: "test", publicUrl: publicUrl ?? DEFAULT_PUBLIC_URL };
+  const named = env.KIPPU_PAYMENTS_PROVIDER;
+  let provider: PaymentsConfig["provider"];
+  if (named === undefined || named === "") {
+    if (ledgerEnvironment === "staging" || ledgerEnvironment === "production") {
+      throw new PaymentsConfigError(
+        `KIPPU_LEDGER_ENVIRONMENT=${ledgerEnvironment} needs KIPPU_PAYMENTS_PROVIDER: ` +
+          (ledgerEnvironment === "production" ? "bloque" : "test or bloque"),
+      );
     }
-    throw new PaymentsConfigError(
-      `KIPPU_LEDGER_ENVIRONMENT=${ledgerEnvironment} needs a payment provider: set ${KEYS.join(", ")}`,
-    );
+    provider = set.length === 0 ? "test" : "bloque";
+  } else {
+    const found = PROVIDERS.find((candidate) => candidate === named);
+    if (found === undefined) {
+      throw new PaymentsConfigError(
+        `KIPPU_PAYMENTS_PROVIDER must be test or bloque, not "${named}"`,
+      );
+    }
+    provider = found;
+  }
+
+  if (provider === "test") {
+    if (ledgerEnvironment === "production") {
+      throw new PaymentsConfigError(
+        "the test payment provider is refused in production: use bloque",
+      );
+    }
+    if (set.length > 0) {
+      throw new PaymentsConfigError(
+        `KIPPU_PAYMENTS_PROVIDER=test is refused while Bloque credentials are set (${set.join(", ")}): ` +
+          "the test provider and Bloque are never both active",
+      );
+    }
+    return { provider: "test", publicUrl: publicUrl ?? DEFAULT_PUBLIC_URL };
+  }
+
+  if (set.length === 0) {
+    throw new PaymentsConfigError(`Bloque payments need ${KEYS.join(", ")}`);
   }
   if (set.length !== KEYS.length) {
     const missing = KEYS.filter((key) => !set.includes(key));

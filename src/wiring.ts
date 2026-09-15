@@ -130,7 +130,8 @@ export interface DomainServices {
   readonly admissionReports: AdmissionReports;
   /**
    * The test payment provider end-to-end suites may drive over HTTP, in
-   * `development` and `test` when it is the provider in use; `null` otherwise.
+   * `development`, `test` and `staging` when it is the provider in use
+   * (`KIPPU_PAYMENTS_PROVIDER=test`); never in `production`; `null` otherwise.
    */
   readonly testingPayments: TestPaymentProvider | null;
 }
@@ -289,8 +290,9 @@ export function createDomainServices(
             ...(publicUrl === undefined ? {} : { publicUrl }),
           }),
         };
+  // Never in production, whatever provider was passed in.
   const testingPayments =
-    (environment === "development" || environment === "test") &&
+    (environment === "development" || environment === "test" || environment === "staging") &&
     isTestPaymentProvider(payments.provider)
       ? payments.provider
       : null;

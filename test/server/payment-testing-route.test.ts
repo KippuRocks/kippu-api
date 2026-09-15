@@ -1,9 +1,13 @@
+import { createMemoryBackend } from "@ticketto/backend-memory";
+import { createProfileV0 } from "@ticketto/profile-v0";
 import Fastify, { type FastifyInstance } from "fastify";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { loadConfig } from "../../src/config.js";
 import { createBloquePaymentProvider } from "../../src/sales/payments/bloque.js";
+import { loadPaymentsConfig } from "../../src/sales/payments/config.js";
+import { paymentProviderFor } from "../../src/sales/payments/provider.js";
 import { registerPaymentTestingRoute } from "../../src/sales/payments/testing-route.js";
-import { createServer, type KippuServer } from "../../src/wiring.js";
+import { createDomainServices, createServer, type KippuServer } from "../../src/wiring.js";
 import {
   createMigratedTestDatabase,
   describeWithStore,
@@ -69,6 +73,50 @@ describeWithStore("the test-only payments route", () => {
     expect(absent.statusCode).toBe(404);
     expect(absent.json()).toMatchObject({ message: expect.stringMatching(/not found/) });
     await withBloque.close();
+  });
+
+  it("is mounted in staging with KIPPU_PAYMENTS_PROVIDER=test, and never in production", async () => {
+    const staging = loadConfig({
+      ...environment(database.url, "staging"),
+      KIPPU_LEDGER_SERVICE_URL: "http://127.0.0.1:1",
+      KIPPU_SPONSOR_URL: "http://127.0.0.1:2",
+    });
+    const payments = loadPaymentsConfig("staging", { KIPPU_PAYMENTS_PROVIDER: "test" });
+    const ledgerBackend = createMemoryBackend({
+      profile: createProfileV0({ rpId: "holder.kippu.example" }),
+    });
+    const withTest = createDomainServices(staging, database.store, {
+      ledgerBackend,
+      payments: { provider: paymentProviderFor(payments), publicUrl: payments.publicUrl },
+    });
+    expect(withTest.testingPayments).not.toBeNull();
+    const server = createServer(
+      staging,
+      database.store,
+      {},
+      {
+        ledgerBackend,
+        payments: { provider: paymentProviderFor(payments), publicUrl: payments.publicUrl },
+      },
+    );
+    expect((await drive(server.app, "test-checkout-404", { outcome: "paid" })).json()).toEqual({
+      error: "no such hosted checkout",
+    });
+    await server.close();
+
+    const withBloque = createDomainServices(staging, database.store, {
+      ledgerBackend,
+      payments: {
+        provider: createBloquePaymentProvider({ client: {} as never, webhookSecret: "whsec_x" }),
+        publicUrl: "https://api.kippu.example",
+      },
+    });
+    expect(withBloque.testingPayments).toBeNull();
+
+    // Production refuses the test provider at configuration, and no wiring would mount it there.
+    expect(() => loadPaymentsConfig("production", { KIPPU_PAYMENTS_PROVIDER: "test" })).toThrow(
+      /refused in production/,
+    );
   });
 
   async function paidFor() {

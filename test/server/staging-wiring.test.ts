@@ -10,6 +10,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { TRPC_PREFIX } from "../../src/app.js";
 import { ConfigError, loadConfig } from "../../src/config.js";
 import { makeTicketto } from "../../src/ledger/ticketto.js";
+import { loadPaymentsConfig } from "../../src/sales/payments/config.js";
+import { paymentProviderFor } from "../../src/sales/payments/provider.js";
 import { connectRelayDerivedCopy, type RelayDerivedCopy } from "../../src/sponsor/derived.js";
 import { createEntitlements } from "../../src/sponsor/entitlements.js";
 import { buildSponsorRelay } from "../../src/sponsor/relay.js";
@@ -163,6 +165,11 @@ describe.runIf(Boolean(ledgerServiceUrl && sponsorSecret && databaseServer))(
         {},
         {
           ...(ledgerBackend === undefined ? {} : { ledgerBackend }),
+          // As a kippu-e2e stack runs staging: the test payment provider, named explicitly.
+          payments: (() => {
+            const payments = loadPaymentsConfig("staging", { KIPPU_PAYMENTS_PROVIDER: "test" });
+            return { provider: paymentProviderFor(payments), publicUrl: payments.publicUrl };
+          })(),
         },
       );
       server.start();

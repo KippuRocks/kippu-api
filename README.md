@@ -280,7 +280,15 @@ Checkout takes payment through a provider's **hosted checkout** (`F-022` plan §
 | `KIPPU_BLOQUE_PAYMENTS_SECRET_KEY` | Bloque's secret key: `sk_test_…` in sandbox, `sk_live_…` in production |
 | `KIPPU_BLOQUE_PAYMENTS_WEBHOOK_SECRET` | The secret Bloque signs webhooks with |
 
-All three or none. With none, the test provider is used in `development` and `test`; `staging` and `production` refuse to take payments without Bloque. Setting `KIPPU_TEST_BLOQUE_PAYMENTS_SECRET_KEY` and `KIPPU_TEST_BLOQUE_PAYMENTS_WEBHOOK_SECRET` (sandbox) runs the adapter's sandbox test, which creates, retrieves and cancels one checkout; it is skipped otherwise.
+All three or none. **`KIPPU_PAYMENTS_PROVIDER`** (`test` or `bloque`) names the provider:
+
+| `KIPPU_LEDGER_ENVIRONMENT` | `KIPPU_PAYMENTS_PROVIDER` |
+|---|---|
+| `production` | required: `bloque` — `test` is refused |
+| `staging` | required, no default: `test` (a kippu-e2e stack) or `bloque` |
+| `development`, `test` | optional: unset means Bloque when its credentials are set, the test provider otherwise |
+
+`test` is refused whenever any Bloque credential is set, so the two are never both active. Setting `KIPPU_TEST_BLOQUE_PAYMENTS_SECRET_KEY` and `KIPPU_TEST_BLOQUE_PAYMENTS_WEBHOOK_SECRET` (sandbox) runs the adapter's sandbox test, which creates, retrieves and cancels one checkout; it is skipped otherwise.
 
 - **Organiser actions** (`T-022-05`, `REQ-HD-4`; `src/sales/organiser-actions.ts`, reached as `createSales(...).organiserActions`): `canDecreaseCapacity(event, to, db?)` — issued tickets plus holds not yet issued at most `to`; pass a transaction holding `lockEventAllocations` to keep it true until the write. `releaseAll(event, cause)` before a seal or cancellation closes the event's sales in Kippu (no checkout, hold or payment; inventory not on sale), releases every outstanding hold, cancels open hosted checkouts, and records an `event-closed` refund entitlement for any payment already taken. `reopenSales(event, cause)` if the organiser's write is refused. `recordCancellationRefunds(event, cause)` once the event is `Cancelled` (`T-022-07`, `AC-A5.5`): one `event-cancelled` refund entitlement per purchased ticket, at most once, for its face value, owed to its original purchaser, with the holder at cancellation (`getCancellationHolder`, `REQ-EV-10`) recorded.
 - **Confirmation freshness** (plan §5.1, ruled in `M2`): `sales.checkout.get` reports `ticketVisible` — true once Kippu's copy has passed the sale's issuance receipt (`NFR-11`) — read with the checkout page's token; `waitForTicketMs` (up to 10 s) waits for it once the sale is issued. Ichiba says the ticket is in Saifu only then. No public `waitFor` is exposed.
@@ -300,7 +308,7 @@ Content-Type: application/json
 - `:checkoutId` is the provider's checkout id: the last path segment of `Checkout.payment.url`.
 - `paid` marks the checkout paid (for `amount` when given, to test a mismatch); `cancelled` is a failed payment attempt, which ends a single-use checkout; `expired` expires it.
 - Unless `webhook` is `false`, the provider's signed webhook is then delivered to Kippu's webhook handling, exactly as `POST /webhooks/payments` receives it. The answer is `{ checkout: { id, status, amount, asset }, webhook: "delivered" | "skipped" }`; an unknown checkout is 404, one no longer open 409.
-- **Mounted only** when `KIPPU_LEDGER_ENVIRONMENT` is `development` or `test` **and** no Bloque credentials are set, so the test provider is in use. With Bloque's credentials, in `staging` or in `production`, the path does not exist (404).
+- **Mounted only** when the test provider is in use (`KIPPU_PAYMENTS_PROVIDER=test`, or unset with no Bloque credentials in `development`/`test`) and `KIPPU_LEDGER_ENVIRONMENT` is `development`, `test` or `staging`. With Bloque, or in `production`, the path does not exist (404).
 
 ### Package releases
 
