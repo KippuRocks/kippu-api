@@ -234,6 +234,30 @@ export interface RedeemInvitationInput {
   readonly token: string;
 }
 
+/**
+ * Why a redemption was refused, in `error.data.reason` (`T-021-12`, `T-021-13`).
+ * Platform reasons, not §10 codes; each refusal keeps its transport code, and its
+ * §10 code where it has one.
+ * - `unknown-invitation`: no invitation has the token (`NOT_FOUND`).
+ * - `already-redeemed`: the invitation was redeemed, or is being (`CONFLICT`).
+ * - `seat-held`: a buyer's checkout holds the invitation's seat (`CONFLICT`).
+ * - `seat-taken`: a ticket holds the seat, or is being issued for it
+ *   (`CONFLICT`, `ERR-TicketIdExists`).
+ * - `sold-out`: issued tickets and outstanding holds fill the event's capacity
+ *   (`ERR-CapacityExceeded`).
+ * - `class-sold-out`: they fill the class's quota (`ERR-ClassQuotaExceeded`).
+ *
+ * Every refusal but `unknown-invitation` and `already-redeemed` leaves the
+ * invitation open, to redeem once the place frees.
+ */
+export type InvitationRefusal =
+  | "unknown-invitation"
+  | "already-redeemed"
+  | "seat-held"
+  | "seat-taken"
+  | "sold-out"
+  | "class-sold-out";
+
 /** A redeemed invitation: the ticket the ledger recorded for the linked holder account. */
 export interface RedeemedInvitation extends IssuedTicket {
   readonly event: string;

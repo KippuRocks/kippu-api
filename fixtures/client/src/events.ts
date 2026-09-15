@@ -1,5 +1,5 @@
-import type { AppRouter, SaleAsset } from "@kippu/api";
-import { createTRPCClient, httpBatchLink } from "@trpc/client";
+import type { AppRouter, InvitationRefusal, SaleAsset } from "@kippu/api";
+import { createTRPCClient, httpBatchLink, TRPCClientError } from "@trpc/client";
 
 function organiserClient(token: string) {
   return createTRPCClient<AppRouter>({
@@ -117,4 +117,13 @@ export async function redeemInvitation(holderToken: string, invitation: string):
     token: invitation,
   });
   return ticket;
+}
+
+/** Why Saifu's redemption was refused, typed from the router's error shape: a platform reason. */
+export function redemptionRefusal(error: unknown): InvitationRefusal | null {
+  if (error instanceof TRPCClientError) {
+    const typed = error as TRPCClientError<AppRouter>;
+    return (typed.data?.reason ?? null) as InvitationRefusal | null;
+  }
+  return null;
 }

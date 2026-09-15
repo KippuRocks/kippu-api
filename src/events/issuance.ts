@@ -112,7 +112,11 @@ export function issueGrantedWith(options: IssuanceOptions) {
       if (seat !== null) {
         ticket = await seats.assertFree(client, input.event, input.zone, seat.position);
         if (counts.seatHeld) {
-          throw new RefusedRequest("the seat is held by a buyer's checkout", "CONFLICT");
+          throw new RefusedRequest(
+            "the seat is held by a buyer's checkout",
+            "CONFLICT",
+            "seat-held",
+          );
         }
       }
       const found = await ledger.getEvent(input.event as EventId);
