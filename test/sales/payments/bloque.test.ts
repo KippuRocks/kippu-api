@@ -20,6 +20,7 @@ const input = {
   expiresAt: EXPIRES_AT,
   successUrl: "https://ichiba.kippu.example/checkout/done",
   cancelUrl: "https://ichiba.kippu.example/checkout/cancelled",
+  webhookUrl: "https://api.kippu.example/webhooks/payments/bloque",
 };
 
 /** A checkout as `@bloque/payments` returns it. */
@@ -83,7 +84,7 @@ function mockClient(states: Checkout[]): { client: BloquePaymentsClient; calls: 
 }
 
 describe("the Bloque payment provider, over a mocked @bloque/payments", () => {
-  it("creates a hosted checkout for the hold: one item, card and PSE only, expiring with the hold, no payer details", async () => {
+  it("creates a single-use hosted checkout for the hold: one item, card and PSE only, expiring with the hold, webhooks to Kippu, no payer details", async () => {
     const { client, calls } = mockClient([bloqueCheckout()]);
     const provider = createBloquePaymentProvider({ client, webhookSecret: WEBHOOK_SECRET });
 
@@ -100,6 +101,8 @@ describe("the Bloque payment provider, over a mocked @bloque/payments", () => {
         expires_at: "2026-09-14T20:10:00.000Z",
         success_url: "https://ichiba.kippu.example/checkout/done",
         cancel_url: "https://ichiba.kippu.example/checkout/cancelled",
+        webhook_url: "https://api.kippu.example/webhooks/payments/bloque",
+        single_use: true,
       },
     ]);
     expect(calls.created[0]).not.toHaveProperty("payeer");

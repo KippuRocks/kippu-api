@@ -12,6 +12,9 @@ import {
   type Checkout,
   type CheckoutAccount,
   CheckoutError,
+  type CheckoutPayment,
+  type CheckoutRefund,
+  type CheckoutSale,
   type HandoffLink,
   type HoldStatus,
   type Sales,
@@ -52,14 +55,44 @@ interface CheckoutRow {
   readonly hold_status: HoldStatus | null;
   readonly hold_expires_at: Date | null;
   readonly hold_extended_at: Date | null;
+  readonly hold_asset: string | null;
+  readonly hold_price: string | null;
+  readonly payment_status: CheckoutPayment["status"] | null;
+  readonly payment_url: string | null;
+  readonly payment_amount: string | null;
+  readonly payment_asset: string | null;
+  readonly payment_expires_at: Date | null;
+  readonly sale_status: CheckoutSale["status"] | null;
+  readonly sale_ticket: string | null;
+  readonly sale_cursor: string | null;
+  readonly refund_amount: string | null;
+  readonly refund_asset: string | null;
+  readonly refund_reason: CheckoutRefund["reason"] | null;
 }
 
 const SELECT_CHECKOUT = `
   SELECT c.id, c.token_hash, c.handoff_token_hash, c.handoff_generation, c.event, c.zone,
          c.class_id, c.position, c.holder_account, c.link_confirmed_at, c.created_at,
          h.status AS hold_status, h.expires_at AS hold_expires_at,
-         h.extended_at AS hold_extended_at
-  FROM checkout_sessions c LEFT JOIN holds h ON h.checkout_id = c.id`;
+         h.extended_at AS hold_extended_at, h.asset AS hold_asset, h.price AS hold_price,
+         k.status AS payment_status, k.url AS payment_url, k.amount AS payment_amount,
+         k.asset AS payment_asset, k.expires_at AS payment_expires_at,
+         s.status AS sale_status, s.ticket AS sale_ticket, s.receipt_cursor AS sale_cursor,
+         r.amount AS refund_amount, r.asset AS refund_asset, r.reason AS refund_reason
+  FROM checkout_sessions c
+  LEFT JOIN holds h ON h.checkout_id = c.id
+  LEFT JOIN LATERAL (
+    SELECT status, url, amount, asset, expires_at FROM hosted_checkouts
+    WHERE hold_id = h.id ORDER BY created_at DESC, id LIMIT 1
+  ) k ON true
+  LEFT JOIN LATERAL (
+    SELECT status, ticket, receipt_cursor FROM primary_sales
+    WHERE hold_id = h.id ORDER BY created_at DESC, id LIMIT 1
+  ) s ON true
+  LEFT JOIN LATERAL (
+    SELECT amount, asset, reason FROM refund_entitlements
+    WHERE checkout_id = c.id ORDER BY created_at, id LIMIT 1
+  ) r ON true`;
 
 /**
  * The handoff token of a checkout's `generation`: derived from the page's token,
@@ -103,7 +136,9 @@ function pairingCodeOf(
  * before a hold is placed (`T-022-03`). A checkout with no hold expires after an
  * hour.
  */
-export function createCheckouts(options: CheckoutsOptions): Omit<Sales, "inventory"> {
+export function createCheckouts(
+  options: CheckoutsOptions,
+): Omit<Sales, "inventory" | "pay" | "cancel" | "paymentWebhook"> {
   const { store, ledger, classes, zones, holds, now = () => new Date() } = options;
   const random = options.randomBytes ?? ((length: number) => randomBytes(length));
 
@@ -145,6 +180,30 @@ export function createCheckouts(options: CheckoutsOptions): Omit<Sales, "invento
                   : row.hold_status,
               expiresAt: holdExpiresAt.toISOString(),
               extended: row.hold_extended_at !== null,
+              asset: row.hold_asset,
+              price: row.hold_price === null ? null : Number(row.hold_price),
+            },
+      payment:
+        row.payment_status === null
+          ? null
+          : {
+              status: row.payment_status,
+              url: row.payment_url as string,
+              amount: Number(row.payment_amount),
+              asset: row.payment_asset as string,
+              expiresAt: (row.payment_expires_at as Date).toISOString(),
+            },
+      sale:
+        row.sale_status === null
+          ? null
+          : { status: row.sale_status, ticket: row.sale_ticket, cursor: row.sale_cursor },
+      refund:
+        row.refund_reason === null
+          ? null
+          : {
+              amount: Number(row.refund_amount),
+              asset: row.refund_asset as string,
+              reason: row.refund_reason,
             },
       createdAt: row.created_at.toISOString(),
       expiresAt: expiresAt === null ? null : expiresAt.toISOString(),

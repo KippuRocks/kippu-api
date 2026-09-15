@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { createRelaySponsor } from "@kippu/sponsorship";
 import { connectOffchainBackend } from "@ticketto/binding-offchain";
 import type { Backend } from "@ticketto/sdk";
@@ -20,6 +21,9 @@ import { type KippuTicketto, makeTicketto } from "./ledger/ticketto.js";
 import { createMetadataDocuments } from "./metadata/documents.js";
 import type { MetadataStorage } from "./metadata/storage.js";
 import { type LapseSweeper, lapseSweeper } from "./sales/holds.js";
+import { PAYMENT_WEBHOOK_PATH } from "./sales/payment.js";
+import type { PaymentProvider } from "./sales/payments/ports.js";
+import { createTestPaymentProvider } from "./sales/payments/test-provider.js";
 import { createSales } from "./sales/service.js";
 import type { Store } from "./store/store.js";
 
@@ -29,6 +33,9 @@ import type { Store } from "./store/store.js";
  * the ledger's 24-hour maximum.
  */
 export const DEVELOPMENT_OPERATION_LIFETIME = 5 * 60 * 1000;
+
+/** kippu-api's public origin in development, when none is configured. */
+export const DEVELOPMENT_PUBLIC_URL = "http://localhost:8080";
 
 /**
  * `binding-offchain`, connected to the ledger service `config.ledgerServiceUrl`
@@ -77,6 +84,12 @@ export interface WiringOptions {
   readonly onReaderError?: (error: unknown) => void;
   /** Receives every failure of the background task recording lapsed holds. Defaults to `console.error`. */
   readonly onLapseSweepError?: (error: unknown) => void;
+  /**
+   * The payment provider, and kippu-api's public origin its webhooks are sent to
+   * (`T-022-04`; `paymentsFor`). Defaults, in `development` and `test` only, to
+   * the deterministic test provider and `http://localhost:8080`.
+   */
+  readonly payments?: { readonly provider: PaymentProvider; readonly publicUrl: string };
 }
 
 export interface DomainServices {
@@ -186,14 +199,29 @@ export function createDomainServices(
     authority,
     ...(publicUrl === undefined ? {} : { publicUrl }),
   });
+  if (options.payments === undefined && environment === "staging") {
+    throw new WiringError("staging needs a payment provider and kippu-api's public URL");
+  }
+  const payments = options.payments ?? {
+    provider: createTestPaymentProvider(),
+    publicUrl: DEVELOPMENT_PUBLIC_URL,
+  };
   const sales = createSales({
     store,
     ledger,
+    authority,
     classes: events.classes,
     zones: events.zones,
     seats: events.seats,
+    provider: payments.provider,
+    webhookUrl: new URL(PAYMENT_WEBHOOK_PATH, payments.publicUrl).toString(),
+    ...(options.onLapseSweepError === undefined ? {} : { onError: options.onLapseSweepError }),
   });
-  const lapses = lapseSweeper(sales.holds, options.onLapseSweepError);
+  // Records lapses, and cancels the hosted checkouts of holds that ended (T-022-04).
+  const lapses = lapseSweeper(
+    { lapseExpired: () => sales.payments.sweep(`sweep-${randomUUID()}`) },
+    options.onLapseSweepError,
+  );
   const base = { auth, events, derived, sales };
   const services =
     options.metadataStorage === undefined

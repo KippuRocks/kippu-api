@@ -30,6 +30,8 @@ export interface TestPaymentProvider extends PaymentProvider {
   checkouts(): readonly HostedCheckout[];
   /** The buyer pays an open checkout — by default its amount. */
   pay(id: string, options?: { readonly amount?: number }): HostedCheckout;
+  /** The buyer's payment attempt fails: a single-use checkout is cancelled by it (plan §5.4). */
+  failPayment(id: string): HostedCheckout;
   /** An open checkout expires now, whatever its expiry. */
   expire(id: string): HostedCheckout;
   /** The next call of `operation` fails with a `PaymentProviderError`. */
@@ -43,6 +45,8 @@ export interface TestPaymentProvider extends PaymentProvider {
 }
 
 export interface TestPaymentProviderOptions {
+  /** What checkout ids start with: `test-checkout` by default. Providers sharing a store need their own. */
+  readonly prefix?: string;
   /** The secret webhooks are signed with. */
   readonly webhookSecret?: string;
   readonly now?: () => Date;
@@ -58,7 +62,11 @@ const sign = (rawBody: string, secret: string): string =>
 export function createTestPaymentProvider(
   options: TestPaymentProviderOptions = {},
 ): TestPaymentProvider {
-  const { webhookSecret = "test-webhook-secret", now = () => new Date() } = options;
+  const {
+    webhookSecret = "test-webhook-secret",
+    now = () => new Date(),
+    prefix = "test-checkout",
+  } = options;
   const stored = new Map<string, Stored>();
   const failures = new Set<TestProviderOperation>();
   const paysBeforeCancel = new Set<string>();
@@ -105,6 +113,8 @@ export function createTestPaymentProvider(
     });
 
   return {
+    webhookSignatureHeader: "x-test-signature",
+
     async createCheckout(input: CreateHostedCheckout) {
       failIfScripted("createCheckout");
       if (!Number.isSafeInteger(input.amount) || input.amount < 0) {
@@ -113,7 +123,7 @@ export function createTestPaymentProvider(
         );
       }
       sequence += 1;
-      const id = `test-checkout-${sequence}`;
+      const id = `${prefix}-${sequence}`;
       const checkout: HostedCheckout = {
         id,
         url: `https://payments.test.invalid/checkout/${id}`,
@@ -161,6 +171,12 @@ export function createTestPaymentProvider(
     pay(id, payment = {}) {
       const found = open(id);
       markPaid(found, payment.amount ?? found.checkout.amount);
+      return found.checkout;
+    },
+
+    failPayment(id) {
+      const found = open(id);
+      found.checkout = { ...found.checkout, status: "cancelled" };
       return found.checkout;
     },
 

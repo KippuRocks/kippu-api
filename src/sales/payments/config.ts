@@ -12,15 +12,40 @@
 import type { Config, Environment } from "../../config.js";
 import type { BloquePaymentsConfig } from "./bloque.js";
 
-export type PaymentsConfig =
+export type PaymentsConfig = (
   | { readonly provider: "test" }
-  | { readonly provider: "bloque"; readonly bloque: BloquePaymentsConfig };
+  | { readonly provider: "bloque"; readonly bloque: BloquePaymentsConfig }
+) & {
+  /**
+   * kippu-api's public origin (`KIPPU_PUBLIC_URL`), where the provider sends
+   * webhooks. Required with Bloque; `http://localhost:8080` otherwise by default.
+   */
+  readonly publicUrl: string;
+};
 
 export class PaymentsConfigError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "PaymentsConfigError";
   }
+}
+
+/** kippu-api's public origin in development, when none is configured. */
+const DEFAULT_PUBLIC_URL = "http://localhost:8080";
+
+/** An http(s) origin, with no path, from `KIPPU_PUBLIC_URL`, when set. */
+function readPublicUrl(value: string | undefined): string | undefined {
+  if (value === undefined || value === "") return undefined;
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new PaymentsConfigError("KIPPU_PUBLIC_URL is not a URL");
+  }
+  if ((url.protocol !== "https:" && url.protocol !== "http:") || url.origin !== value) {
+    throw new PaymentsConfigError("KIPPU_PUBLIC_URL must be an http(s) origin, with no path");
+  }
+  return url.origin;
 }
 
 const KEYS = [
@@ -36,10 +61,11 @@ export function loadPaymentsConfig(
   ledgerEnvironment: Config["ledgerEnvironment"],
   env: Environment = process.env,
 ): PaymentsConfig {
+  const publicUrl = readPublicUrl(env.KIPPU_PUBLIC_URL);
   const set = KEYS.filter((key) => env[key] !== undefined && env[key] !== "");
   if (set.length === 0) {
     if (ledgerEnvironment === "development" || ledgerEnvironment === "test") {
-      return { provider: "test" };
+      return { provider: "test", publicUrl: publicUrl ?? DEFAULT_PUBLIC_URL };
     }
     throw new PaymentsConfigError(
       `KIPPU_LEDGER_ENVIRONMENT=${ledgerEnvironment} needs a payment provider: set ${KEYS.join(", ")}`,
@@ -61,8 +87,14 @@ export function loadPaymentsConfig(
       `KIPPU_BLOQUE_PAYMENTS_SECRET_KEY must be a ${KEY_PREFIX[mode]} key in ${mode} mode`,
     );
   }
+  if (publicUrl === undefined) {
+    throw new PaymentsConfigError(
+      "KIPPU_PUBLIC_URL is required with Bloque payments: the origin its webhooks are sent to",
+    );
+  }
   return {
     provider: "bloque",
+    publicUrl,
     bloque: {
       mode,
       secretKey,

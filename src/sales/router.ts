@@ -3,17 +3,20 @@ import { z } from "zod";
 import { RefusedRequest, SpecCodeError } from "../authority/errors.js";
 import { toTRPCError } from "../trpc/errors.js";
 import { holderProcedure, publicProcedure, router } from "../trpc/trpc.js";
+import { PaymentProviderError } from "./payments/ports.js";
 import {
   type BeginCheckoutInput,
   type BegunCheckout,
   type Checkout,
   CheckoutError,
   type CheckoutFailure,
+  type CheckoutPayment,
   type CheckoutTokenInput,
   type ConfirmLinkInput,
   type HandoffLink,
   type HandoffTokenInput,
   type HoldOutcome,
+  type PayCheckoutInput,
   type SaleInventory,
   type SaleInventoryInput,
 } from "./ports.js";
@@ -40,6 +43,8 @@ const TRANSPORT_CODE: Record<CheckoutFailure, TRPCError["code"]> = {
   "link-unconfirmed": "PRECONDITION_FAILED",
   "not-pairing": "PRECONDITION_FAILED",
   "pairing-code-mismatch": "CONFLICT",
+  "hold-required": "PRECONDITION_FAILED",
+  "already-paid": "CONFLICT",
 };
 
 /**
@@ -55,6 +60,13 @@ async function mapped<T>(work: () => Promise<T>): Promise<T> {
     }
     if (error instanceof RefusedRequest) {
       throw new TRPCError({ code: error.transport, message: error.message });
+    }
+    if (error instanceof PaymentProviderError) {
+      throw new TRPCError({
+        code: "SERVICE_UNAVAILABLE",
+        message: "the payment provider could not be reached",
+        cause: error,
+      });
     }
     if (error instanceof CheckoutError) {
       throw new TRPCError({ code: TRANSPORT_CODE[error.failure], message: error.message });
@@ -88,6 +100,13 @@ const token = z.string().regex(/^[A-Za-z0-9_-]{43}$/, "expected a checkout token
 const tokenInput = z.object({ token }).strict();
 
 const handoffTokenInput = z.object({ handoffToken: token }).strict();
+
+/** A return URL Ichiba passes: http(s), absolute. */
+const returnUrl = z
+  .url({ protocol: /^https?$/, error: "expected an absolute http(s) URL" })
+  .max(2048);
+
+const payInput = z.object({ token, successUrl: returnUrl, cancelUrl: returnUrl }).strict();
 
 const confirmLinkInput = z
   .object({ token, pairingCode: z.string().regex(/^[0-9]{6}$/, "expected a 6-digit code") })
@@ -195,6 +214,38 @@ const checkoutRouter = router({
       ({ ctx, input }): Promise<HoldOutcome> =>
         mapped(() =>
           ctx.services.sales.hold(
+            { requestId: ctx.requestId, principal: ctx.principal },
+            input.token,
+          ),
+        ),
+    ),
+  /**
+   * Pays for the checkout's outstanding hold (`F-022` plan §5.1 step 4): answers
+   * with the provider's hosted checkout — created now at the hold's price, expiring
+   * with the hold, which takes its single extension; or the open one. Ichiba
+   * redirects the buyer to `url`, passing its own return URLs. The ticket follows
+   * a verified payment: read the checkout's `sale` for it. `PRECONDITION_FAILED`
+   * with no hold or an unconfirmed link; `CONFLICT` once the hold ended or is paid;
+   * `SERVICE_UNAVAILABLE` when the provider cannot be reached.
+   */
+  pay: publicProcedure
+    .input(parser<PayCheckoutInput>(payInput))
+    .mutation(
+      ({ ctx, input }): Promise<CheckoutPayment> =>
+        mapped(() =>
+          ctx.services.sales.pay({ requestId: ctx.requestId, principal: ctx.principal }, input),
+        ),
+    ),
+  /**
+   * The buyer gives up (`AC-B4.3`): the open hosted checkout is cancelled and the
+   * hold released — no ticket, no charge. A payment that landed first is honoured.
+   */
+  cancel: publicProcedure
+    .input(parser<CheckoutTokenInput>(tokenInput))
+    .mutation(
+      ({ ctx, input }): Promise<Checkout> =>
+        mapped(() =>
+          ctx.services.sales.cancel(
             { requestId: ctx.requestId, principal: ctx.principal },
             input.token,
           ),

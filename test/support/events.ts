@@ -15,7 +15,12 @@ import { createEvents } from "../../src/events/service.js";
 import { type KippuTicketto, makeTicketto } from "../../src/ledger/ticketto.js";
 import { createMetadataDocuments } from "../../src/metadata/documents.js";
 import type { MetadataStorage } from "../../src/metadata/storage.js";
-import { createSales } from "../../src/sales/service.js";
+import { PAYMENT_WEBHOOK_PATH } from "../../src/sales/payment.js";
+import {
+  createTestPaymentProvider,
+  type TestPaymentProvider,
+} from "../../src/sales/payments/test-provider.js";
+import { createSales, type SalesOptions } from "../../src/sales/service.js";
 import type { AppRouter } from "../../src/trpc/router.js";
 import { createMigratedTestDatabase, type TestDatabase } from "./database.js";
 import { createOrganiser } from "./organisers.js";
@@ -55,6 +60,12 @@ export interface EventsHarness {
   readonly events: ReturnType<typeof createEvents>;
   /** The sales services the app serves (`F-022`). */
   readonly sales: ReturnType<typeof createSales>;
+  /** The deterministic payment provider the sales services use. */
+  readonly payments: TestPaymentProvider;
+  /** Options for sales services of a test's own over the harness's store, ledger and provider. */
+  salesOptions(overrides?: Partial<SalesOptions>): SalesOptions;
+  /** The app's base URL. */
+  readonly address: string;
   /** The operation id of every command the sponsor was asked to sponsor, in order (`REQ-SP-1`). */
   readonly sponsored: readonly OperationId[];
   organiser(): Promise<TestOrganiser>;
@@ -110,13 +121,20 @@ export async function eventsHarness(options: EventsHarnessOptions = {}): Promise
     },
   });
   const events = createEvents({ store: database.store, authority, ledger });
-  const sales = createSales({
+  const payments = createTestPaymentProvider();
+  const salesOptions = (overrides: Partial<SalesOptions> = {}): SalesOptions => ({
     store: database.store,
     ledger,
+    authority,
     classes: events.classes,
     zones: events.zones,
     seats: events.seats,
+    provider: payments,
+    webhookUrl: `http://localhost${PAYMENT_WEBHOOK_PATH}`,
+    onError: () => {},
+    ...overrides,
   });
+  const sales = createSales(salesOptions());
 
   const sessions = new Map<string, SessionInfo>();
   const auth = new Proxy({} as Auth, {
@@ -166,6 +184,9 @@ export async function eventsHarness(options: EventsHarnessOptions = {}): Promise
     authority,
     events,
     sales,
+    payments,
+    salesOptions,
+    address,
     sponsored,
 
     holder() {

@@ -21,10 +21,12 @@ const PUBLIC_PROCEDURES = [
   "derived.events.get",
   "derived.events.onSale",
   "sales.checkout.begin",
+  "sales.checkout.cancel",
   "sales.checkout.confirmLink",
   "sales.checkout.discardLink",
   "sales.checkout.get",
   "sales.checkout.hold",
+  "sales.checkout.pay",
   "sales.inventory",
   "system.health",
 ];

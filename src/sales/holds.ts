@@ -201,7 +201,7 @@ export interface LapseSweeper {
 }
 
 export function lapseSweeper(
-  holds: Pick<Holds, "lapseExpired">,
+  holds: { lapseExpired(): Promise<unknown> },
   onError: (error: unknown) => void = (error) => console.error(error),
   intervalMs: number = LAPSE_SWEEP_INTERVAL_MS,
 ): LapseSweeper {

@@ -1,11 +1,14 @@
 import { loadConfig } from "./config.js";
 import { loadMetadataConfig, loadMetadataPublicUrl } from "./metadata/config.js";
 import { createS3MetadataStorage } from "./metadata/storage.js";
+import { loadPaymentsConfig } from "./sales/payments/config.js";
+import { paymentProviderFor } from "./sales/payments/provider.js";
 import { assertMigrated } from "./store/migrate.js";
 import { createStore } from "./store/store.js";
 import { connectLedgerBackend, createServer, type KippuServer } from "./wiring.js";
 
 const config = loadConfig();
+const payments = loadPaymentsConfig(config.ledgerEnvironment);
 const store = createStore(config.databaseUrl);
 let server: KippuServer;
 try {
@@ -25,6 +28,8 @@ try {
       metadataPublicUrl: loadMetadataPublicUrl(),
       ...(storage === undefined ? {} : { metadataStorage: storage }),
       ...(ledgerBackend === undefined ? {} : { ledgerBackend }),
+      // Bloque's hosted checkout when its credentials are set; the test provider otherwise (F-022).
+      payments: { provider: paymentProviderFor(payments), publicUrl: payments.publicUrl },
     },
   );
   server.app.log.warn(
@@ -33,6 +38,7 @@ try {
       metadataStorage: storage !== undefined,
       sponsor: config.sponsorRelayUrl ?? "development sponsor",
       ledgerService: config.ledgerServiceUrl ?? "backend-memory",
+      payments: payments.provider,
     },
     config.ledgerEnvironment === "staging"
       ? "serving over binding-offchain and a software KMS: organiser keys live in this process's " +
