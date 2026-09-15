@@ -58,6 +58,20 @@ export interface EventView extends CopiedFact {
    * (`REQ-MD-2`).
    */
   readonly metadata: { readonly [field: string]: ReadJson } | null;
+  /**
+   * How long an access pass for the event stays valid (`NFR-5`, `REQ-AP-3`): the
+   * window its organiser set, or the default. Saifu produces passes with it.
+   * Kippu's setting, not a ledger fact.
+   */
+  readonly passWindow: PassWindowView;
+}
+
+/** An event's pass window. */
+export interface PassWindowView {
+  /** Milliseconds. */
+  readonly windowMs: number;
+  /** Whether the organiser has set none, and the default (60 seconds) applies. */
+  readonly isDefault: boolean;
 }
 
 /** A ticket, as one object of ledger facts and its class's platform metadata. */

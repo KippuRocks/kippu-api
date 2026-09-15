@@ -120,6 +120,7 @@ describeWithStore("read routers for Saifu, Ibento and Ichiba", () => {
       zones: [{ id: zone, kind: "Unseated" }],
       metadataLocator: eventLocator(event),
       metadata: document,
+      passWindow: { windowMs: 60_000, isDefault: true },
       sequence: expect.any(Number),
       authoritative: false,
     });
@@ -303,6 +304,83 @@ describeWithStore("read routers for Saifu, Ibento and Ichiba", () => {
       restrictions: { cannotResale: true, cannotTransfer: true },
     });
     expect(byClass.get(undefinedClass)).toMatchObject({ kippuClass: null, classMetadata: null });
+  });
+
+  it("NFR-5: holdings and event reads carry the event's configured pass window, or the default", async () => {
+    const organiser = await harness.organiser();
+    const account = randomBytes(32).toString("hex");
+    const holder: Principal = { kind: "holder", account, sessionId: "test" };
+    const eventWithTicket = async (windowMs: number | null) => {
+      const { event, zone } = await createEvent(organiser);
+      if (windowMs !== null) {
+        await organiser.client.events.setPassWindow.mutate({ event, windowMs });
+      }
+      // A Purchased class puts the event on sale, so the index lists it too.
+      await organiser.client.events.classes.define.mutate({
+        event,
+        name: "General admission",
+        description: null,
+        provenance: "Purchased",
+        price: 5_000,
+        policy: { kind: "Single" },
+        restrictions: { cannotResale: false, cannotTransfer: false },
+        quota: null,
+      });
+      const guests = await organiser.client.events.classes.define.mutate({
+        event,
+        name: "Guest list",
+        description: null,
+        provenance: "Granted",
+        policy: { kind: "Single" },
+        restrictions: { cannotResale: false, cannotTransfer: false },
+        quota: null,
+      });
+      await organiser.client.events.tickets.issueGranted.mutate({
+        event,
+        class: guests.id,
+        zone,
+        placement: { kind: "Unseated" },
+        holder: account,
+      });
+      return event;
+    };
+    const configured = await eventWithTicket(120_000);
+    const unset = await eventWithTicket(null);
+    await reader.catchUp();
+
+    const expected = {
+      [configured]: { windowMs: 120_000, isDefault: false },
+      [unset]: { windowMs: 60_000, isDefault: true },
+    };
+    for (const event of [configured, unset]) {
+      // Public event reads (REQ-MP-7) and the index of events on sale.
+      expect((await as(ANONYMOUS).derived.events.get({ event })).event?.passWindow).toEqual(
+        expected[event],
+      );
+    }
+    const onSale = await as(ANONYMOUS).derived.events.onSale({ limit: 100 });
+    for (const view of onSale.events.filter((view) => view.id in expected)) {
+      expect(view.passWindow).toEqual(expected[view.id]);
+    }
+    expect(onSale.events.filter((view) => view.id in expected)).toHaveLength(2);
+    // The organiser's own events.
+    const mine = await as(organiserPrincipal(organiser)).derived.events.mine();
+    expect(Object.fromEntries(mine.events.map((view) => [view.id, view.passWindow]))).toEqual(
+      expected,
+    );
+    // Holdings: what Saifu produces passes with.
+    const { holdings } = await as(holder).derived.holdings.mine();
+    expect(holdings).toHaveLength(2);
+    for (const { ticket, event } of holdings) {
+      expect(event?.passWindow).toEqual(expected[ticket.event]);
+    }
+
+    // A change applies to the next read, with no ledger write.
+    await organiser.client.events.setPassWindow.mutate({ event: unset, windowMs: 30_000 });
+    expect((await as(ANONYMOUS).derived.events.get({ event: unset })).event?.passWindow).toEqual({
+      windowMs: 30_000,
+      isDefault: false,
+    });
   });
 
   it("each read is open only to whom it serves", async () => {
