@@ -2,7 +2,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import type { HolderPrincipal, OrganiserPrincipal } from "../auth/ports.js";
 import { RefusedRequest, SpecCodeError } from "../authority/errors.js";
-import { toTRPCError } from "../trpc/errors.js";
+import { RefusalReasonCause, toTRPCError } from "../trpc/errors.js";
 import { holderProcedure, organiserProcedure, router } from "../trpc/trpc.js";
 import type {
   AddSeatPositionsInput,
@@ -16,6 +16,7 @@ import type {
   EventSaleAsset,
   EventsRequest,
   Invitation,
+  InvitationRefusal,
   IssuedTicket,
   IssueGrantedInput,
   ListInvitationsInput,
@@ -55,7 +56,11 @@ async function mapped<T>(work: () => Promise<T>): Promise<T> {
       throw toTRPCError(error);
     }
     if (error instanceof RefusedRequest) {
-      throw new TRPCError({ code: error.transport, message: error.message });
+      throw new TRPCError({
+        code: error.transport,
+        message: error.message,
+        ...(error.reason === null ? {} : { cause: new RefusalReasonCause(error.reason) }),
+      });
     }
     throw error;
   }
@@ -276,7 +281,11 @@ const invitationsRouter = router({
     ),
   /**
    * Saifu redeems a token for the linked holder account: the class's ticket is
-   * issued to it, once. An unknown token is `NOT_FOUND`; a redeemed one `CONFLICT`.
+   * issued to it, once. A refusal carries an {@link InvitationRefusal} in
+   * `error.data.reason`, beside its transport code and any §10 code:
+   * `unknown-invitation` (`NOT_FOUND`), `already-redeemed` and `seat-held`
+   * (`CONFLICT`), `seat-taken` (`CONFLICT`, `ERR-TicketIdExists`), `sold-out`
+   * (`ERR-CapacityExceeded`) and `class-sold-out` (`ERR-ClassQuotaExceeded`).
    */
   redeem: holderProcedure
     .input(parser<RedeemInvitationInput>(redeemInvitationInput))

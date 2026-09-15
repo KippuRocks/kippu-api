@@ -6,11 +6,17 @@ import type {
   SessionInfo,
 } from "../auth/ports.js";
 import type { Context } from "./context.js";
-import { SpecErrorCause } from "./errors.js";
+import { RefusalReasonCause, SpecErrorCause } from "./errors.js";
 
-/** The §10 code, when the error carries one; `null` otherwise. */
+/** What a failed call carries beyond tRPC's own error shape. */
 export interface KippuErrorData {
+  /** The §10 code, when the error carries one; `null` otherwise. */
   readonly errorCode: string | null;
+  /**
+   * A machine-readable platform reason, when a procedure documents one — such as
+   * why an invitation's redemption was refused. Not a §10 code; `null` otherwise.
+   */
+  readonly reason: string | null;
 }
 
 /**
@@ -32,6 +38,10 @@ const t = initTRPC
     errorFormatter({ shape, error }) {
       const data: KippuErrorData = {
         errorCode: error.cause instanceof SpecErrorCause ? error.cause.specCode : null,
+        reason:
+          error.cause instanceof SpecErrorCause || error.cause instanceof RefusalReasonCause
+            ? error.cause.reason
+            : null,
       };
       // An internal error reaches the client with no detail: no message from
       // wherever it arose, and never a stack (`F-020` plan §5.5). The server logs it.

@@ -268,3 +268,25 @@ export async function refusal(
   }
   throw new Error("expected the call to be refused");
 }
+
+/** How a tRPC call was refused, with the platform reason in `error.data.reason`. */
+export async function refusalWithReason(call: () => Promise<unknown>): Promise<{
+  code: string | undefined;
+  errorCode: string | null | undefined;
+  reason: string | null | undefined;
+}> {
+  try {
+    await call();
+  } catch (error) {
+    if (error instanceof TRPCClientError) {
+      const typed = error as TRPCClientError<AppRouter>;
+      return {
+        code: typed.data?.code,
+        errorCode: typed.data?.errorCode,
+        reason: typed.data?.reason,
+      };
+    }
+    throw error;
+  }
+  throw new Error("expected the call to be refused");
+}

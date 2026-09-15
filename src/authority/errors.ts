@@ -6,11 +6,14 @@
  */
 export class SpecCodeError extends Error {
   readonly code: string;
+  /** A machine-readable platform reason, carried in `error.data.reason`; `null` for none. */
+  readonly reason: string | null;
 
-  constructor(code: string, detail?: string) {
+  constructor(code: string, detail?: string, reason: string | null = null) {
     super(detail === undefined ? code : `${code}: ${detail}`);
     this.name = "SpecCodeError";
     this.code = code;
+    this.reason = reason;
   }
 }
 
@@ -23,10 +26,17 @@ export class SpecCodeError extends Error {
  */
 export class RefusedRequest extends Error {
   readonly transport: "BAD_REQUEST" | "NOT_FOUND" | "CONFLICT" | "PRECONDITION_FAILED";
+  /** A machine-readable platform reason, carried in `error.data.reason`; `null` for none. */
+  readonly reason: string | null;
 
-  constructor(message: string, transport: RefusedRequest["transport"] = "BAD_REQUEST") {
+  constructor(
+    message: string,
+    transport: RefusedRequest["transport"] = "BAD_REQUEST",
+    reason: string | null = null,
+  ) {
     super(message);
     this.name = "RefusedRequest";
     this.transport = transport;
+    this.reason = reason;
   }
 }

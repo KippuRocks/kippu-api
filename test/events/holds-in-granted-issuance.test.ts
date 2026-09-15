@@ -7,6 +7,7 @@ import {
   eventsHarness,
   randomId,
   refusal,
+  refusalWithReason,
   type TestOrganiser,
 } from "../support/events.js";
 
@@ -198,5 +199,103 @@ describeWithStore("outstanding holds in granted issuance and invitations", () =>
       (result) => result.status === "fulfilled" && "ticket" in (result.value as object),
     );
     expect(held.length + issued.length).toBe(1);
+  });
+  it("a refused redemption says why in error.data.reason, beside its transport and §10 codes", async () => {
+    const context = await setup(1);
+    const invite = async (
+      placement: { zone: string; position: string | null },
+      classId = context.guests,
+    ) =>
+      context.organiser.client.events.invitations.create.mutate({
+        event: context.event,
+        class: classId,
+        zone: placement.zone,
+        placement:
+          placement.position === null
+            ? { kind: "Unseated" }
+            : { kind: "Seated", position: placement.position },
+        guest: null,
+      });
+    const redeem = (token: string) =>
+      refusalWithReason(() => harness.holder().client.events.invitations.redeem.mutate({ token }));
+
+    expect(await redeem("B".repeat(43))).toEqual({
+      code: "NOT_FOUND",
+      errorCode: null,
+      reason: "unknown-invitation",
+    });
+
+    // seat-held: a buyer holds the invitation's seat.
+    const heldSeat = await invite({ zone: context.seated, position: "A-1" });
+    await hold(context, "A-1");
+    expect(await redeem(heldSeat.token)).toEqual({
+      code: "CONFLICT",
+      errorCode: null,
+      reason: "seat-held",
+    });
+
+    // sold-out: the hold takes the event's one place.
+    const unseated = await invite({ zone: context.unseated, position: null });
+    expect(await redeem(unseated.token)).toEqual({
+      code: "UNPROCESSABLE_CONTENT",
+      errorCode: "ERR-CapacityExceeded",
+      reason: "sold-out",
+    });
+
+    // class-sold-out, seat-taken and already-redeemed, on an event with room.
+    const roomy = await setup(null);
+    const closed = await roomy.organiser.client.events.classes.define.mutate(
+      classInput(roomy.event, "Closed list", { quota: 0 }),
+    );
+    const quotaInvitation = await roomy.organiser.client.events.invitations.create.mutate({
+      event: roomy.event,
+      class: closed.id,
+      zone: roomy.unseated,
+      placement: { kind: "Unseated" },
+      guest: null,
+    });
+    expect(await redeem(quotaInvitation.token)).toEqual({
+      code: "UNPROCESSABLE_CONTENT",
+      errorCode: "ERR-ClassQuotaExceeded",
+      reason: "class-sold-out",
+    });
+
+    const seatInvitation = await roomy.organiser.client.events.invitations.create.mutate({
+      event: roomy.event,
+      class: roomy.guests,
+      zone: roomy.seated,
+      placement: { kind: "Seated", position: "A-2" },
+      guest: null,
+    });
+    await roomy.organiser.client.events.tickets.issueGranted.mutate(grant(roomy, "A-2"));
+    expect(await redeem(seatInvitation.token)).toEqual({
+      code: "CONFLICT",
+      errorCode: "ERR-TicketIdExists",
+      reason: "seat-taken",
+    });
+
+    const open = await roomy.organiser.client.events.invitations.create.mutate({
+      event: roomy.event,
+      class: roomy.guests,
+      zone: roomy.unseated,
+      placement: { kind: "Unseated" },
+      guest: null,
+    });
+    await harness.holder().client.events.invitations.redeem.mutate({ token: open.token });
+    expect(await redeem(open.token)).toEqual({
+      code: "CONFLICT",
+      errorCode: null,
+      reason: "already-redeemed",
+    });
+
+    // A refusal elsewhere carries no reason.
+    expect(
+      await refusalWithReason(() =>
+        roomy.organiser.client.events.tickets.issueGranted.mutate({
+          ...grant(roomy, null),
+          class: closed.id,
+        }),
+      ),
+    ).toEqual({ code: "UNPROCESSABLE_CONTENT", errorCode: "ERR-ClassQuotaExceeded", reason: null });
   });
 });

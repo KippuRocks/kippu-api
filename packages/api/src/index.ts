@@ -14,6 +14,7 @@ export type {
   CreateEventInput,
   DefineClassInput,
   EventSaleAsset,
+  InvitationRefusal,
   SaleAsset,
   SetClassPriceInput,
   SetSaleAssetInput,

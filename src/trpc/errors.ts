@@ -23,11 +23,28 @@ export function isSpecErrorCode(code: string): boolean {
  */
 export class SpecErrorCause extends Error {
   readonly specCode: string;
+  /** A machine-readable platform reason accompanying the code, when there is one. */
+  readonly reason: string | null;
 
-  constructor(specCode: string) {
+  constructor(specCode: string, reason: string | null = null) {
     super(specCode);
     this.name = "SpecErrorCause";
     this.specCode = specCode;
+    this.reason = reason;
+  }
+}
+
+/**
+ * Carries a platform refusal's machine-readable reason — not a §10 code — to the
+ * error formatter, which copies it into `error.data.reason`.
+ */
+export class RefusalReasonCause extends Error {
+  readonly reason: string;
+
+  constructor(reason: string) {
+    super(reason);
+    this.name = "RefusalReasonCause";
+    this.reason = reason;
   }
 }
 
@@ -58,14 +75,14 @@ function transportCode(specCode: string): TRPCErrorCode {
  * verbatim. A code that is not a §10 code is not passed on: the client sees an
  * internal error, with no detail from wherever the error arose.
  */
-export function toTRPCError(error: SpecError): TRPCError {
+export function toTRPCError(error: SpecError & { readonly reason?: string | null }): TRPCError {
   if (!isSpecErrorCode(error.code)) {
     return new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
   }
   return new TRPCError({
     code: transportCode(error.code),
     message: error.code,
-    cause: new SpecErrorCause(error.code),
+    cause: new SpecErrorCause(error.code, error.reason ?? null),
   });
 }
 

@@ -11,6 +11,7 @@ import type {
   CreateInvitationInput,
   EventsRequest,
   Invitation,
+  InvitationRefusal,
   InvitationStatus,
   IssuedTicket,
   IssueGrantedInput,
@@ -20,6 +21,29 @@ import type {
   RedeemInvitationInput,
 } from "./ports.js";
 import { normaliseDesignation, type Zones } from "./zones.js";
+
+const refusal = (reason: InvitationRefusal): InvitationRefusal => reason;
+
+/** The §10 codes whose refusal of a redemption has a reason of its own. */
+const REASON_OF_CODE: Readonly<Record<string, InvitationRefusal>> = {
+  "ERR-TicketIdExists": "seat-taken",
+  "ERR-CapacityExceeded": "sold-out",
+  "ERR-ClassQuotaExceeded": "class-sold-out",
+};
+
+/** The issuance's refusal, with the redemption's machine-readable reason attached where it has one. */
+function withReason(error: unknown): unknown {
+  if (error instanceof SpecCodeError && error.reason === null) {
+    const reason = REASON_OF_CODE[error.code];
+    if (reason !== undefined) {
+      const detail = error.message.startsWith(`${error.code}: `)
+        ? error.message.slice(error.code.length + 2)
+        : undefined;
+      return new SpecCodeError(error.code, detail, reason);
+    }
+  }
+  return error;
+}
 
 /** Bytes of randomness in an invitation token. */
 export const INVITATION_TOKEN_BYTES = 32;
@@ -202,9 +226,17 @@ export function createInvitations(options: InvitationsOptions): Invitations {
           tokenHash,
         ]);
         if ((found.rowCount ?? 0) === 0) {
-          throw new RefusedRequest("no invitation has this token", "NOT_FOUND");
+          throw new RefusedRequest(
+            "no invitation has this token",
+            "NOT_FOUND",
+            refusal("unknown-invitation"),
+          );
         }
-        throw new RefusedRequest("the invitation has already been redeemed", "CONFLICT");
+        throw new RefusedRequest(
+          "the invitation has already been redeemed",
+          "CONFLICT",
+          refusal("already-redeemed"),
+        );
       }
 
       let issued: IssuedTicket;
@@ -226,7 +258,7 @@ export function createInvitations(options: InvitationsOptions): Invitations {
             : "UPDATE invitations SET status = 'failed' WHERE id = $1",
           [row.id],
         );
-        throw error;
+        throw withReason(error);
       }
       await store.query(
         `UPDATE invitations SET status = 'redeemed', ticket = $2, redeemed_at = $3
