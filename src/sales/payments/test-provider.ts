@@ -7,6 +7,14 @@ import {
 } from "./ports.js";
 import { HOLD_METADATA_KEY, webhookReferences } from "./webhook-references.js";
 
+/** Marks a test provider, so wiring can tell it from a real one. */
+const TEST_PROVIDER = Symbol("kippu.testPaymentProvider");
+
+/** Whether `provider` is the deterministic test provider. */
+export function isTestPaymentProvider(provider: object): provider is TestPaymentProvider {
+  return TEST_PROVIDER in provider;
+}
+
 /** The operations a test can make fail. */
 export type TestProviderOperation = "createCheckout" | "retrieve" | "cancel";
 
@@ -26,6 +34,7 @@ export interface TestWebhook {
  * a payment landing just as Kippu cancels, and signed or forged webhooks.
  */
 export interface TestPaymentProvider extends PaymentProvider {
+  readonly [TEST_PROVIDER]: true;
   /** Every checkout created, in order. */
   checkouts(): readonly HostedCheckout[];
   /** The buyer pays an open checkout — by default its amount. */
@@ -113,6 +122,7 @@ export function createTestPaymentProvider(
     });
 
   return {
+    [TEST_PROVIDER]: true,
     webhookSignatureHeader: "x-test-signature",
 
     async createCheckout(input: CreateHostedCheckout) {

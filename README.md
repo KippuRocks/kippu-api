@@ -259,6 +259,22 @@ Checkout takes payment through a provider's **hosted checkout** (`F-022` plan §
 
 All three or none. With none, the test provider is used in `development` and `test`; `staging` and `production` refuse to take payments without Bloque. Setting `KIPPU_TEST_BLOQUE_PAYMENTS_SECRET_KEY` and `KIPPU_TEST_BLOQUE_PAYMENTS_WEBHOOK_SECRET` (sandbox) runs the adapter's sandbox test, which creates, retrieves and cancels one checkout; it is skipped otherwise.
 
+#### Driving the test payment provider over HTTP
+
+End-to-end suites that run kippu-api as a separate process (Ichiba's, `T-060-05`) script the deterministic test provider through a **test-only** route:
+
+```http
+POST /v0/testing/payments/:checkoutId
+Content-Type: application/json
+
+{ "outcome": "paid" | "cancelled" | "expired", "amount"?: 1234, "webhook"?: true }
+```
+
+- `:checkoutId` is the provider's checkout id: the last path segment of `Checkout.payment.url`.
+- `paid` marks the checkout paid (for `amount` when given, to test a mismatch); `cancelled` is a failed payment attempt, which ends a single-use checkout; `expired` expires it.
+- Unless `webhook` is `false`, the provider's signed webhook is then delivered to Kippu's webhook handling, exactly as `POST /webhooks/payments` receives it. The answer is `{ checkout: { id, status, amount, asset }, webhook: "delivered" | "skipped" }`; an unknown checkout is 404, one no longer open 409.
+- **Mounted only** when `KIPPU_LEDGER_ENVIRONMENT` is `development` or `test` **and** no Bloque credentials are set, so the test provider is in use. With Bloque's credentials, in `staging` or in `production`, the path does not exist (404).
+
 ### Package releases
 
 Package versions are managed with Changesets (`pnpm changeset`). Nothing is

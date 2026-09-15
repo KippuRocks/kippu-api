@@ -23,7 +23,12 @@ import type { MetadataStorage } from "./metadata/storage.js";
 import { type LapseSweeper, lapseSweeper } from "./sales/holds.js";
 import { PAYMENT_WEBHOOK_PATH } from "./sales/payment.js";
 import type { PaymentProvider } from "./sales/payments/ports.js";
-import { createTestPaymentProvider } from "./sales/payments/test-provider.js";
+import {
+  createTestPaymentProvider,
+  isTestPaymentProvider,
+  type TestPaymentProvider,
+} from "./sales/payments/test-provider.js";
+import { registerPaymentTestingRoute } from "./sales/payments/testing-route.js";
 import { createSales } from "./sales/service.js";
 import type { Store } from "./store/store.js";
 
@@ -102,6 +107,11 @@ export interface DomainServices {
   readonly freshness: Freshness;
   /** Records lapsed holds in the background (`T-022-03`); not started. */
   readonly lapses: LapseSweeper;
+  /**
+   * The test payment provider end-to-end suites may drive over HTTP, in
+   * `development` and `test` when it is the provider in use; `null` otherwise.
+   */
+  readonly testingPayments: TestPaymentProvider | null;
 }
 
 /** Storage holding nothing: reads find no document, and writes are refused. */
@@ -236,7 +246,12 @@ export function createDomainServices(
             ...(publicUrl === undefined ? {} : { publicUrl }),
           }),
         };
-  return { services, ledger, reader, freshness, lapses };
+  const testingPayments =
+    (environment === "development" || environment === "test") &&
+    isTestPaymentProvider(payments.provider)
+      ? payments.provider
+      : null;
+  return { services, ledger, reader, freshness, lapses, testingPayments };
 }
 
 export interface KippuServer {
@@ -258,12 +273,15 @@ export function createServer(
   options: FastifyServerOptions = {},
   wiring: WiringOptions = {},
 ): KippuServer {
-  const { services, ledger, reader, freshness, lapses } = createDomainServices(
+  const { services, ledger, reader, freshness, lapses, testingPayments } = createDomainServices(
     config,
     store,
     wiring,
   );
   const app = buildApp(options, undefined, services);
+  if (testingPayments !== null) {
+    registerPaymentTestingRoute(app, testingPayments, services.sales);
+  }
   return {
     app,
     ledger,
