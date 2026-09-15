@@ -46,6 +46,7 @@ const TRANSPORT_CODE: Record<CheckoutFailure, TRPCError["code"]> = {
   "pairing-code-mismatch": "CONFLICT",
   "hold-required": "PRECONDITION_FAILED",
   "already-paid": "CONFLICT",
+  "sales-closed": "CONFLICT",
 };
 
 /**

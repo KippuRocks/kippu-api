@@ -151,9 +151,10 @@ export interface CheckoutRefund {
   /**
    * `issuance-rejected`: the ticket was not issued; `place-gone`: the payment
    * landed after the hold ended and the place was taken; `amount-mismatch`: the
-   * provider took another amount than the price.
+   * provider took another amount than the price; `event-closed`: the hold was
+   * released because the event is being sealed or cancelled (`REQ-HD-4`).
    */
-  readonly reason: "issuance-rejected" | "place-gone" | "amount-mismatch";
+  readonly reason: "issuance-rejected" | "place-gone" | "amount-mismatch" | "event-closed";
 }
 
 /** Paying for a checkout's hold: the checkout page's token, and Ichiba's return URLs. */
@@ -232,7 +233,9 @@ export type CheckoutFailure =
   /** The checkout has no hold to pay for yet. */
   | "hold-required"
   /** The checkout's hold is already paid for. */
-  | "already-paid";
+  | "already-paid"
+  /** The event is being sealed or cancelled: its sales are closed (`REQ-HD-4`). */
+  | "sales-closed";
 
 export class CheckoutError extends Error {
   readonly failure: CheckoutFailure;

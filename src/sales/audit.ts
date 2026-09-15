@@ -24,7 +24,8 @@ export type CheckoutStep =
   | "issued"
   | "issuance-rejected"
   | "issuance-failed"
-  | "refund-entitled";
+  | "refund-entitled"
+  | "hold-released";
 
 /** What caused a step: the request, and who made it (`NFR-7`). */
 export interface CheckoutCause {

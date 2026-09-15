@@ -8,6 +8,7 @@ import type { Store } from "../store/store.js";
 import { createCheckouts } from "./checkout.js";
 import { createHolds, type Holds } from "./holds.js";
 import { createInventory } from "./inventory.js";
+import { createOrganiserSaleActions, type OrganiserSaleActions } from "./organiser-actions.js";
 import { createPayments, type Payments } from "./payment.js";
 import type { PaymentProvider } from "./payments/ports.js";
 import type { Sales } from "./ports.js";
@@ -37,9 +38,12 @@ export interface SalesOptions {
 }
 
 /** The `F-022` services behind the sales router, with the holds and payments they use. */
-export function createSales(
-  options: SalesOptions,
-): Sales & { readonly holds: Holds; readonly payments: Payments } {
+export function createSales(options: SalesOptions): Sales & {
+  readonly holds: Holds;
+  readonly payments: Payments;
+  /** For `F-021`'s capacity decrease, seal and cancel (`T-022-05`, `REQ-HD-4`). */
+  readonly organiserActions: OrganiserSaleActions;
+} {
   const holds = createHolds(options);
   const payments = createPayments(options);
   const { inventory } = createInventory(options);
@@ -56,5 +60,6 @@ export function createSales(
       payments.paymentWebhook(requestId, rawBody, headers),
     holds,
     payments,
+    organiserActions: createOrganiserSaleActions({ ...options, payments }),
   };
 }

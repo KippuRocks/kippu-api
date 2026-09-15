@@ -241,7 +241,7 @@ export function createCheckouts(
   return {
     async beginCheckout(request, input) {
       // The event is on sale: it exists, and is Active (`REQ-EV-8`).
-      const event = await eventOnSale(ledger, input.event);
+      const event = await eventOnSale(ledger, input.event, store);
 
       // The class is defined for the event, and its tickets are sold (`REQ-TC-2`, `REQ-TK-3`).
       const ticketClass = await classes.find(input.event, input.class);

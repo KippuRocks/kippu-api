@@ -25,11 +25,14 @@ import {
   allocationCounts,
   capacityHasRoom,
   lockAllocation,
+  lockEventAllocations,
   quotaHasRoom,
+  salesClosed,
 } from "./allocation.js";
 import {
   type CheckoutActor,
   type CheckoutCause,
+  inTransaction,
   PAYMENT_PROVIDER,
   recordCheckoutStep,
   SWEEP,
@@ -82,6 +85,25 @@ export interface Payments {
    * ended; a payment that landed first is reconciled instead (plan §5.1 step 6).
    */
   sweep(requestId: string): Promise<void>;
+  /**
+   * For a seal or cancellation (`T-022-05`, `REQ-HD-4`): closes the event's sales,
+   * then releases every outstanding hold and cancels every open hosted checkout of
+   * its holds. A payment already taken against a released hold records a refund
+   * entitlement, never a ticket.
+   */
+  releaseAll(event: string, cause: CheckoutCause): Promise<ReleasedSales>;
+  /** Reopens sales `releaseAll` closed, when the organiser's write was refused. Answers whether any were closed. */
+  reopenSales(event: string, cause: CheckoutCause): Promise<boolean>;
+}
+
+/** What `releaseAll` did. */
+export interface ReleasedSales {
+  /** Outstanding holds released. */
+  readonly released: number;
+  /** Hosted checkouts cancelled unpaid. */
+  readonly cancelled: number;
+  /** Refund entitlements recorded for payments already taken. */
+  readonly refunds: number;
 }
 
 interface HoldRow {
@@ -279,6 +301,25 @@ export function createPayments(options: PaymentsOptions): Payments {
           "amount-mismatch",
         );
         await releaseHold(client, hold.hold_id);
+        await client.query("COMMIT");
+        return null;
+      }
+
+      // The event is being sealed or cancelled: the payment takes no place, and is refunded.
+      if (await salesClosed(client, hold.event)) {
+        await entitle(
+          client,
+          cause,
+          hosted,
+          hold.checkout_id,
+          remote.amount,
+          remote.asset,
+          "event-closed",
+        );
+        const released = await releaseHold(client, hold.hold_id);
+        if (released.rowCount === 1) {
+          await recordCheckoutStep(client, hold.checkout_id, "hold-released", cause, now());
+        }
         await client.query("COMMIT");
         return null;
       }
@@ -566,6 +607,9 @@ export function createPayments(options: PaymentsOptions): Payments {
         if (hold.price === null || hold.asset === null) {
           throw new RefusedRequest("the hold has no price: it was placed before prices existed");
         }
+        if (await salesClosed(client, hold.event)) {
+          throw new CheckoutError("sales-closed", "the event's sales are closed");
+        }
 
         const open = await openHosted(client, hold.hold_id);
         if (open !== undefined) {
@@ -700,6 +744,103 @@ export function createPayments(options: PaymentsOptions): Payments {
     },
 
     reconcile,
+
+    async releaseAll(event, cause) {
+      await inTransaction(store, async (db) => {
+        // Under the event's allocation lock: no hold is placed once sales are closed.
+        await lockEventAllocations(db, event);
+        const { actor } = cause;
+        await db.query(
+          `INSERT INTO event_sale_closures
+             (event, closed_request_id, closed_principal_kind, closed_session_id, closed_at)
+           SELECT $1, $2, $3, $4, $5
+           WHERE NOT EXISTS
+             (SELECT 1 FROM event_sale_closures WHERE event = $1 AND reopened_at IS NULL)`,
+          [
+            event,
+            cause.requestId,
+            actor.kind,
+            "sessionId" in actor ? actor.sessionId : null,
+            now(),
+          ],
+        );
+      });
+
+      let cancelled = 0;
+      const paid: string[] = [];
+      const holdIds = await store.query<{ id: string }>(
+        `SELECT DISTINCT h.id FROM holds h
+         LEFT JOIN hosted_checkouts k ON k.hold_id = h.id AND k.status = 'open'
+         WHERE h.event = $1 AND (h.status = 'outstanding' OR k.id IS NOT NULL)`,
+        [event],
+      );
+      const outstanding = (
+        await store.query<{ id: string }>(
+          "SELECT id FROM holds WHERE event = $1 AND status = 'outstanding'",
+          [event],
+        )
+      ).rows.map((row) => row.id);
+      for (const { id } of holdIds.rows) {
+        await inTransaction(store, async (db) => {
+          const hold = (
+            await db.query<{ status: string; checkout_id: string }>(
+              "SELECT status, checkout_id FROM holds WHERE id = $1 FOR UPDATE",
+              [id],
+            )
+          ).rows[0];
+          if (hold === undefined) return;
+          const open = await openHosted(db, id);
+          let paidFirst = false;
+          if (open !== undefined) {
+            if (await cancelHosted(db, open)) {
+              paidFirst = true;
+              paid.push(open.provider_checkout_id);
+            } else {
+              cancelled += 1;
+              await recordCheckoutStep(db, hold.checkout_id, "checkout-cancelled", cause, now(), {
+                providerCheckout: open.provider_checkout_id,
+              });
+            }
+          }
+          if (!paidFirst && hold.status === "outstanding") {
+            const done = await db.query(
+              `UPDATE holds SET status = 'released', ended_at = $2
+               WHERE id = $1 AND status = 'outstanding'`,
+              [id, now()],
+            );
+            if (done.rowCount === 1) {
+              await recordCheckoutStep(db, hold.checkout_id, "hold-released", cause, now(), {
+                reason: "event-closed",
+              });
+            }
+          }
+        });
+      }
+
+      // A payment already taken against a released hold: reconciled, and refunded.
+      for (const id of paid) {
+        await reconcile(cause.requestId, id, cause.actor);
+      }
+      const released = await store.query(
+        "SELECT 1 FROM holds WHERE id = ANY($1::uuid[]) AND status IN ('released', 'lapsed')",
+        [outstanding],
+      );
+      const refunds = await store.query(
+        `SELECT 1 FROM refund_entitlements r JOIN hosted_checkouts k ON k.id = r.hosted_checkout_id
+         WHERE k.provider_checkout_id = ANY($1::text[]) AND r.reason = 'event-closed'`,
+        [paid],
+      );
+      return { released: released.rowCount ?? 0, cancelled, refunds: refunds.rowCount ?? 0 };
+    },
+
+    async reopenSales(event, cause) {
+      const reopened = await store.query(
+        `UPDATE event_sale_closures SET reopened_at = $2, reopened_request_id = $3
+         WHERE event = $1 AND reopened_at IS NULL`,
+        [event, now(), cause.requestId],
+      );
+      return reopened.rowCount === 1;
+    },
 
     async sweep(requestId) {
       await store.query(
