@@ -127,6 +127,7 @@ export async function eventsHarness(options: EventsHarnessOptions = {}): Promise
     authority,
     ledger,
     maxPassWindow: ledgerLimits().maxPassWindow,
+    saleActions: () => sales.organiserActions,
   });
   const payments = createTestPaymentProvider();
   const freshness = createFreshness({ store: database.store, pollInterval: 50 });

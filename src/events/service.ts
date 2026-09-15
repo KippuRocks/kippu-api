@@ -1,7 +1,9 @@
 import type { OrganiserAuthority } from "../authority/authority.js";
 import { type Classes, createClasses } from "../classes/classes.js";
 import type { KippuTicketto } from "../ledger/ticketto.js";
+import type { OrganiserSaleActions } from "../sales/organiser-actions.js";
 import type { Store } from "../store/store.js";
+import { type Capacity, createCapacity } from "./capacity.js";
 import { createEventWith } from "./create-event.js";
 import { createInvitations, type Invitations } from "./invitations.js";
 import { issueGrantedWith } from "./issuance.js";
@@ -17,6 +19,11 @@ export interface EventsOptions {
   readonly authority: OrganiserAuthority;
   /** The SDK, from `makeTicketto` (`T-020-08`). */
   readonly ledger: KippuTicketto;
+  /**
+   * `F-022`'s organiser sale actions, resolved when an organiser action runs:
+   * sales are created after events (`T-022-05`).
+   */
+  readonly saleActions: () => OrganiserSaleActions;
   /** The ledger's maximum pass window, in milliseconds, from the rules configuration (`ledgerLimits`). */
   readonly maxPassWindow: number;
   /** The public origin metadata locators name (`AD-22`); defaults to `https://meta.kippu.rocks`. */
@@ -34,12 +41,14 @@ export function createEvents(options: EventsOptions): Events & {
   readonly seats: SeatAllocation;
   readonly saleAssets: SaleAssets;
   readonly passWindows: PassWindows;
+  readonly capacity: Capacity;
 } {
   const classes = createClasses(options);
   const zones = createZones(options);
   const seats = createSeatAllocation(options);
   const saleAssets = createSaleAssets(options);
   const passWindows = createPassWindows(options);
+  const capacity = createCapacity(options);
   const issueGranted = issueGrantedWith({ ...options, classes, zones, seats });
   const invitations = createInvitations({ ...options, classes, zones, issueGranted });
   return {
@@ -49,6 +58,9 @@ export function createEvents(options: EventsOptions): Events & {
     seats,
     saleAssets,
     passWindows,
+    capacity,
+    decreaseCapacity: (organiserId, request, input) =>
+      capacity.decrease(organiserId, request, input),
     passWindow: (organiserId, input) => passWindows.get(organiserId, input),
     setPassWindow: (organiserId, request, input) => passWindows.set(organiserId, request, input),
     createEvent: createEventWith({ ...options, saleAssets }),
