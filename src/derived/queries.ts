@@ -3,6 +3,7 @@ import type {
   AttendancePolicy,
   ClassId,
   Count,
+  CredentialId,
   Discriminator,
   EventId,
   EventStatus,
@@ -10,6 +11,7 @@ import type {
   Placement,
   Position,
   Provenance,
+  Registration,
   Ticket,
   TicketId,
   Timestamp,
@@ -76,6 +78,43 @@ export interface DerivedQueries {
   holdings(account: AccountId): Promise<DerivedRead<readonly Projected<Ticket>[]>>;
   /** A ticket's recorded attendances; `null` before its first. */
   attendance(ticket: TicketId): Promise<DerivedRead<Projected<Attendance> | null>>;
+  /**
+   * The registration of `credential`, if the copy holds it registered to
+   * `account`; `null` otherwise — as the ledger's `getCredential` answers
+   * (`REQ-CP-6`, `T-025-09`).
+   */
+  credential(
+    account: AccountId,
+    credential: CredentialId,
+  ): Promise<DerivedRead<Projected<Registration> | null>>;
+  /** Every credential registered to `account`, in registration order. */
+  credentials(account: AccountId): Promise<DerivedRead<readonly Projected<RegisteredCredential>[]>>;
+}
+
+/** A credential registered to an account. */
+export interface RegisteredCredential {
+  readonly account: AccountId;
+  readonly credential: CredentialId;
+  readonly registration: Registration;
+}
+
+interface CredentialRow {
+  id: string;
+  account: string;
+  credential: string;
+  registration: Buffer;
+  sequence: string;
+}
+
+function credentialOf(row: CredentialRow): Projected<RegisteredCredential> {
+  return projected(
+    {
+      account: row.account as AccountId,
+      credential: row.credential as CredentialId,
+      registration: new Uint8Array(row.registration) as Registration,
+    },
+    row.sequence,
+  );
 }
 
 /** Where an event sits in creation order: the log sequence of its creation, then its id. */
@@ -279,6 +318,32 @@ export function createDerivedQueries(store: Store): DerivedQueries {
         })),
         freshness,
       };
+    },
+    async credential(account, credential) {
+      const { rows, freshness } = await read<CredentialRow>(
+        store,
+        `SELECT head.*, c.credential AS id, c.account, c.credential, c.registration, c.sequence
+         FROM head
+         LEFT JOIN derived_credentials c ON c.account = $1 AND c.credential = $2`,
+        [account, credential],
+      );
+      const row = rows[0];
+      return {
+        result:
+          row === undefined ? null : projected(credentialOf(row).value.registration, row.sequence),
+        freshness,
+      };
+    },
+    async credentials(account) {
+      const { rows, freshness } = await read<CredentialRow>(
+        store,
+        `SELECT head.*, c.credential AS id, c.account, c.credential, c.registration, c.sequence
+         FROM head
+         LEFT JOIN derived_credentials c ON c.account = $1
+         ORDER BY c.sequence, c.credential`,
+        [account],
+      );
+      return { result: rows.map(credentialOf), freshness };
     },
     async ticket(id) {
       const { rows, freshness } = await read<TicketRow>(
