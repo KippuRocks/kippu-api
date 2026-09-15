@@ -65,6 +65,8 @@ describeWithStore("the relay's plain-HTTP API", () => {
       derived,
       entitlements: createEntitlements({
         derived: derived.queries,
+        organisers: derived.organisers,
+        profile: createProfileV0({ rpId: "holder.kippu.example" }),
         registrationRateLimit: { registrations: 5, window: 60_000 },
       }),
       lagWait: 500,

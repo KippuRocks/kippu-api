@@ -2,6 +2,7 @@ import { readdir, readFile } from "node:fs/promises";
 import type { AddressInfo } from "node:net";
 import { kmsP256Signer } from "@kippu/sponsorship";
 import { softwareKmsP256Key } from "@kippu/sponsorship/testing";
+import { createProfileV0 } from "@ticketto/profile-v0";
 import { type EventId, LOG_START, type LogRecord } from "@ticketto/sdk";
 import { createTRPCClient, httpLink } from "@trpc/client";
 import type { FastifyInstance } from "fastify";
@@ -141,6 +142,8 @@ describe.runIf(Boolean(ledgerServiceUrl && sponsorSecret && databaseServer))(
         derived,
         entitlements: createEntitlements({
           derived: derived.queries,
+          organisers: derived.organisers,
+          profile: createProfileV0({ rpId: "holder.kippu.example" }),
           registrationRateLimit: { registrations: 5, window: 60_000 },
         }),
         lagWait: 20_000,

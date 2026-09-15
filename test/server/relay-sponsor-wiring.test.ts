@@ -1,6 +1,7 @@
 import type { AddressInfo } from "node:net";
 import { kmsP256Signer } from "@kippu/sponsorship";
 import { softwareKmsP256Key } from "@kippu/sponsorship/testing";
+import { createProfileV0 } from "@ticketto/profile-v0";
 import { softwareP256Signer } from "@ticketto/profile-v0/testing";
 import type { Cursor, Discriminator, Receipt, Result, ZoneId } from "@ticketto/sdk";
 import type { FastifyInstance } from "fastify";
@@ -16,7 +17,7 @@ import {
   type TestDatabase,
 } from "../support/database.js";
 import { classId } from "../support/memory-ledger.js";
-import { relayLoginRole } from "../support/sponsor-relay.js";
+import { recordOrganiserAccount, relayLoginRole } from "../support/sponsor-relay.js";
 
 const environment = (databaseUrl: string, extra: Record<string, string> = {}) => ({
   KIPPU_DATABASE_URL: databaseUrl,
@@ -63,6 +64,8 @@ describeWithStore("the server sponsored through the relay", () => {
       derived,
       entitlements: createEntitlements({
         derived: derived.queries,
+        organisers: derived.organisers,
+        profile: createProfileV0({ rpId: "holder.kippu.example" }),
         registrationRateLimit: { registrations: 5, window: 60_000 },
       }),
       lagWait: 20_000,
@@ -97,6 +100,8 @@ describeWithStore("the server sponsored through the relay", () => {
   }, async () => {
     const { ledger } = server;
     const organiser = softwareP256Signer();
+    // Kippu provisions every organiser account it creates events for (REQ-OA-1).
+    await recordOrganiserAccount(database.store, organiser.signer.account);
     const zone = "51".repeat(32) as ZoneId;
 
     const registered = await settled(

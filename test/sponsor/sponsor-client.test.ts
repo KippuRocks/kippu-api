@@ -2,6 +2,7 @@ import { readdir, readFile } from "node:fs/promises";
 import type { AddressInfo } from "node:net";
 import { createRelaySponsor, kmsP256Signer } from "@kippu/sponsorship";
 import { softwareKmsP256Key } from "@kippu/sponsorship/testing";
+import { createProfileV0 } from "@ticketto/profile-v0";
 import { softwareP256Signer } from "@ticketto/profile-v0/testing";
 import type {
   Cursor,
@@ -25,7 +26,7 @@ import {
   type TestDatabase,
 } from "../support/database.js";
 import { classId, HOLDER_RP_ID } from "../support/memory-ledger.js";
-import { relayLoginRole } from "../support/sponsor-relay.js";
+import { recordOrganiserAccount, relayLoginRole } from "../support/sponsor-relay.js";
 
 /** Words for a fee, a balance or a funding step, which no client flow may show (`REQ-SP-1a`). */
 const FEE_VOCABULARY = /\b(fees?|gas|balances?|top[\s_-]?ups?|topUp|fund(s|ing)?|notionalCost)\b/i;
@@ -71,6 +72,8 @@ describeWithStore("kippu-api sponsored through the relay client", () => {
       derived,
       entitlements: createEntitlements({
         derived: derived.queries,
+        organisers: derived.organisers,
+        profile: createProfileV0({ rpId: "holder.kippu.example" }),
         registrationRateLimit: { registrations: 5, window: 60_000 },
       }),
       lagWait: 5_000,
@@ -126,6 +129,8 @@ describeWithStore("kippu-api sponsored through the relay client", () => {
     timeout: 60_000,
   }, async () => {
     const organiser = softwareP256Signer();
+    // Kippu provisions every organiser account it creates events for (REQ-OA-1).
+    await recordOrganiserAccount(database.store, organiser.signer.account);
     const zone = "51".repeat(32) as ZoneId;
     const states: SubmissionState[] = [];
 

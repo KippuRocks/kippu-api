@@ -4,6 +4,7 @@
  */
 import { kmsP256Signer } from "@kippu/sponsorship";
 import { softwareKmsP256Key } from "@kippu/sponsorship/testing";
+import { createProfileV0 } from "@ticketto/profile-v0";
 import { loadSponsorRelayConfig } from "./config.js";
 import { connectRelayDerivedCopy } from "./derived.js";
 import { createEntitlements } from "./entitlements.js";
@@ -17,6 +18,8 @@ const sponsor = kmsP256Signer(softwareKmsP256Key({ secretKey: config.softwareSec
 const derived = connectRelayDerivedCopy(config.derivedDatabaseUrl);
 const entitlements = createEntitlements({
   derived: derived.queries,
+  organisers: derived.organisers,
+  profile: createProfileV0({ rpId: config.holderRpId }),
   registrationRateLimit: config.registrationRateLimit,
 });
 const app = buildSponsorRelay(

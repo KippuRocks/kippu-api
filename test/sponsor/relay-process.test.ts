@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { kmsP256Signer } from "@kippu/sponsorship";
 import { softwareKmsP256Key } from "@kippu/sponsorship/testing";
+import { createProfileV0 } from "@ticketto/profile-v0";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ConfigError } from "../../src/config.js";
 import { loadSponsorRelayConfig } from "../../src/sponsor/config.js";
@@ -24,6 +25,7 @@ const base = {
   KIPPU_SPONSOR_REGISTRATIONS_PER_WINDOW: "3",
   KIPPU_SPONSOR_REGISTRATION_WINDOW_SECONDS: "3600",
   KIPPU_SPONSOR_LAG_WAIT_MS: "5000",
+  KIPPU_SPONSOR_HOLDER_RP_ID: "holder.kippu.example",
 };
 
 describe("sponsor relay configuration", () => {
@@ -36,7 +38,11 @@ describe("sponsor relay configuration", () => {
       derivedDatabaseUrl: base.KIPPU_SPONSOR_DERIVED_DATABASE_URL,
       registrationRateLimit: { registrations: 3, window: 3_600_000 },
       lagWait: 5000,
+      holderRpId: "holder.kippu.example",
     });
+    expect(() =>
+      loadSponsorRelayConfig({ ...base, KIPPU_SPONSOR_HOLDER_RP_ID: "https://holder.example" }),
+    ).toThrow(/KIPPU_SPONSOR_HOLDER_RP_ID/);
     expect(Buffer.from(config.softwareSecretKey).toString("hex")).toBe(SECRET);
     expect(loadSponsorRelayConfig(base).port).toBe(8082);
   });
@@ -141,7 +147,12 @@ describeWithStore("sponsor relay with the derived copy", () => {
     const relay = buildSponsorRelay({
       sponsor,
       derived,
-      entitlements: createEntitlements({ derived: derived.queries, registrationRateLimit }),
+      entitlements: createEntitlements({
+        derived: derived.queries,
+        organisers: derived.organisers,
+        profile: createProfileV0({ rpId: "holder.kippu.example" }),
+        registrationRateLimit,
+      }),
       lagWait: 1_000,
     });
     try {
@@ -161,6 +172,13 @@ describeWithStore("sponsor relay with the derived copy", () => {
     const pool = (await import("pg")).default.Pool;
     const client = new pool({ connectionString: role.url });
     try {
+      // Organiser account ids, through their view, are the one thing outside the copy it reads.
+      await expect(
+        client.query("SELECT account FROM sponsor_relay_organiser_accounts LIMIT 1"),
+      ).resolves.toBeDefined();
+      await expect(
+        client.query("SELECT organiser_id FROM sponsor_relay_organiser_accounts LIMIT 1"),
+      ).rejects.toMatchObject({ code: "42703" });
       for (const table of ["organisers", "sessions", "audit_log", "organiser_ledger_accounts"]) {
         await expect(client.query(`SELECT 1 FROM ${table} LIMIT 1`)).rejects.toMatchObject({
           code: "42501",
@@ -209,7 +227,12 @@ describeWithStore("sponsor relay with the derived copy", () => {
     const relay = buildSponsorRelay({
       sponsor: kmsP256Signer(softwareKmsP256Key()),
       derived: unreachable,
-      entitlements: createEntitlements({ derived: unreachable.queries, registrationRateLimit }),
+      entitlements: createEntitlements({
+        derived: unreachable.queries,
+        organisers: unreachable.organisers,
+        profile: createProfileV0({ rpId: "holder.kippu.example" }),
+        registrationRateLimit,
+      }),
       lagWait: 1_000,
     });
     try {

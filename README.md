@@ -76,13 +76,14 @@ here is authoritative for a Ticketto fact (`REQ-IX-1`).
 
 Kippu sponsors every ledger write (`REQ-SP-1`, `AD-18` A) through a relay that runs as **its own process**: `pnpm sponsor:start` (`node dist/sponsor/server.js`, from the same image). It shares no code path with the API server, so neither one being down stops the other (`NFR-4`). A test checks that its module graph reaches nothing of the business layer.
 
-- **Read-only access to the derived copy, and nothing else.** Migration `0011` creates `kippu_sponsor_relay_reader`, a role that cannot log in and holds `SELECT` on the `derived_*` tables only. A deployment creates the relay's own login role and grants it that role. The relay connects with `KIPPU_SPONSOR_DERIVED_DATABASE_URL`, and its transactions are read only as well. It refuses to start with `KIPPU_DATABASE_URL`, libpq's `PG*` variables, or anything naming the ledger's store.
+- **Read-only access to the derived copy, plus organiser account ids, and nothing else.** Migration `0011` creates `kippu_sponsor_relay_reader`, a role that cannot log in and holds `SELECT` on the `derived_*` tables, including credential registrations (`0024`). It also holds `SELECT` on `sponsor_relay_organiser_accounts` (`0028`), a view of organisers' ledger account ids and nothing else of `organiser_ledger_accounts`. A deployment creates the relay's own login role and grants it that role. The relay connects with `KIPPU_SPONSOR_DERIVED_DATABASE_URL`, and its transactions are read only as well. It refuses to start with `KIPPU_DATABASE_URL`, libpq's `PG*` variables, or anything naming the ledger's store.
 - **The sponsor key.** No KMS provider is chosen. Outside production, `KIPPU_SPONSOR_SOFTWARE_SECRET_KEY` (64 hex characters) is the key of the software stand-in behind `KmsP256Key`. `KIPPU_SPONSOR_ENVIRONMENT=production` refuses to start until a provider's adapter replaces it.
 - **The client.** `createRelaySponsor` from `@kippu/sponsorship` is the SDK's `Sponsor` over this API, for kippu-api, Saifu and Iriguchi. A test drives kippu-api's SDK factory through it end to end (`test/sponsor/sponsor-client.test.ts`).
 - **The API** is plain HTTP and JSON, documented in [`docs/sponsor-relay.md`](docs/sponsor-relay.md). `fixtures/sponsor-client` is a client with no tRPC dependency; CI installs it outside the workspace and obtains a sponsorship from the built relay (`scripts/check-sponsor-client.sh`).
+- **Verified signers** (`T-023-09`). Before any entitlement is considered, an input's authorisation must verify with the V0 profile against a credential registration of its account in the derived copy. An account's first registration is instead verified against the registration it carries. A forged or unregistered authorisation is refused, and never counts against another account's registration limit. `KIPPU_SPONSOR_HOLDER_RP_ID` (required) is the holder credentials' RP id the profile verifies with.
 - **Entitlements** (`src/sponsor/entitlements.ts`, `F-023` §5.3). `POST /v0/sponsor` takes a signed command or pass, framed `{ "input": { "kind", "bytes" } }` as `C4` frames it. It returns a sponsorship only when an entitlement covers the input:
   - an organiser command signed by the event's owner;
-  - `createEvent` whose event id derives from its signer;
+  - `createEvent` by a Kippu organiser account, whose event id derives from it;
   - `issueTicket` signed by the owner;
   - `transferTicket` signed by the ticket's holder, when the ticket is transferable;
   - `registerCredential`, within a rate limit per account;
@@ -100,7 +101,7 @@ KIPPU_SPONSOR_ENVIRONMENT=development \
 KIPPU_SPONSOR_DERIVED_DATABASE_URL=postgres://kippu_sponsor_relay:local@127.0.0.1:54329/kippu_api \
 KIPPU_SPONSOR_SOFTWARE_SECRET_KEY=$(openssl rand -hex 32) \
 KIPPU_SPONSOR_REGISTRATIONS_PER_WINDOW=5 KIPPU_SPONSOR_REGISTRATION_WINDOW_SECONDS=3600 \
-KIPPU_SPONSOR_LAG_WAIT_MS=5000 \
+KIPPU_SPONSOR_LAG_WAIT_MS=5000 KIPPU_SPONSOR_HOLDER_RP_ID=holder.kippu.example \
 KIPPU_DATABASE_URL= pnpm sponsor:start
 ```
 
