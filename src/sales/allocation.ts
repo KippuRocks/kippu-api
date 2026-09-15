@@ -195,6 +195,27 @@ export function capacityRemaining(
   return Math.max(0, event.maxCapacity - issued - counts.eventHolds);
 }
 
+/**
+ * Tickets allocated against the event's capacity: issued, as the ledger counts
+ * them or as Kippu has undertaken to issue them, plus holds not yet issued
+ * (`REQ-HD-4`).
+ */
+export function allocatedCount(event: Pick<Event, "issued">, counts: AllocationCounts): number {
+  return Math.max(event.issued, counts.granted + counts.purchased) + counts.eventHolds;
+}
+
+/**
+ * Whether the event's sales are closed in Kippu for an organiser action in
+ * progress — a seal or a cancellation (`T-022-05`, `REQ-HD-4`).
+ */
+export async function salesClosed(db: Queryable, event: string): Promise<boolean> {
+  const found = await db.query(
+    "SELECT 1 FROM event_sale_closures WHERE event = $1 AND reopened_at IS NULL",
+    [event],
+  );
+  return (found.rowCount ?? 0) > 0;
+}
+
 /** Whether one more allocation fits the event's capacity (`INV-4`, `REQ-HD-3`). */
 export function capacityHasRoom(
   event: Pick<Event, "maxCapacity" | "issued">,

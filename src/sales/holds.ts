@@ -98,7 +98,7 @@ export function createHolds(options: HoldsOptions): Holds {
           return null;
         }
 
-        const event = await eventOnSale(ledger, target.event);
+        const event = await eventOnSale(ledger, target.event, client);
         // The sale terms in force now are the hold's: a later price change affects only
         // holds placed afterwards, and the asset is fixed from this hold on (F-021 "Prices").
         const terms = await saleTerms(client, target.event, target.classId);
