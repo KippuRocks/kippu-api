@@ -224,6 +224,7 @@ export function createDomainServices(
       return organiserSaleActions;
     },
     maxPassWindow: ledgerLimits().maxPassWindow,
+    operationLifetime: DEVELOPMENT_OPERATION_LIFETIME,
     ...(publicUrl === undefined ? {} : { metadataPublicUrl: publicUrl }),
   });
   const reader = createDerivedReader({

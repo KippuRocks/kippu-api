@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { EventId } from "@ticketto/sdk";
+import type pg from "pg";
 import type { OrganiserAuthority } from "../authority/authority.js";
 import { RefusedRequest, SpecCodeError } from "../authority/errors.js";
 import type { KippuTicketto } from "../ledger/ticketto.js";
@@ -13,6 +14,15 @@ export const FINISH_NOTICE_MS = 24 * 60 * 60 * 1000;
 
 /** How often the scheduler looks for notices and finishes that are due. */
 export const FINISH_SCHEDULER_INTERVAL_MS = 30 * 1000;
+
+/**
+ * How long past an unanswered submission's lifetime reconciliation still waits
+ * before resuming a finish: allowance for the ledger's clock running behind Kippu's.
+ */
+export const OPERATION_EXPIRY_MARGIN_MS = 60 * 1000;
+
+/** The advisory lock namespace a running finish is held under, per schedule. */
+export const FINISH_RUN_LOCK_NAMESPACE = 0x66696e69;
 
 /** A scheduled `Finished` whose notice fell due: what the organiser is told. */
 export interface FinishNotice {
@@ -31,10 +41,20 @@ export interface FinishSchedules {
   cancel(organiserId: string, request: EventsRequest, input: EventInput): Promise<FinishSchedule>;
   get(organiserId: string, input: EventInput): Promise<FinishSchedule | null>;
   /**
-   * One pass of the scheduler: gives every notice now due, then runs every finish
-   * now due. Answers what it noticed and what it ran.
+   * One pass of the scheduler: reconciles every finish left running by a process
+   * that is gone, gives every notice now due, then runs every finish now due.
+   * Answers what it reconciled, noticed and ran.
    */
-  runDue(): Promise<{ readonly noticed: number; readonly ran: number }>;
+  runDue(): Promise<{
+    readonly reconciled: number;
+    readonly noticed: number;
+    readonly ran: number;
+  }>;
+  /**
+   * Reconciles every schedule left `running` that no live process holds, against
+   * the ledger's status and the audit log (`T-021-17`). Answers how many it settled.
+   */
+  reconcile(): Promise<number>;
 }
 
 export interface FinishSchedulesOptions {
@@ -42,6 +62,11 @@ export interface FinishSchedulesOptions {
   readonly authority: Pick<OrganiserAuthority, "account">;
   readonly ledger: Pick<KippuTicketto, "getEvent">;
   readonly status: Pick<StatusTransitions, "finish">;
+  /**
+   * How long an assembled command stays valid, in milliseconds: the SDK's
+   * `operationLifetime`. A submission left without a verdict can be accepted until then.
+   */
+  readonly operationLifetime: number;
   /**
    * How a due notice reaches the organiser. V0 has no mail sender: by default the
    * notice is recorded on the schedule (`noticedAt`), for Ibento to show.
@@ -63,6 +88,9 @@ interface ScheduleRow {
 
 const COLUMNS = "id, event, organiser_id, finish_at, status, noticed_at, error_code";
 
+/** The request a scheduled finish's write is audited under (`NFR-7`). */
+const requestIdOf = (row: Pick<ScheduleRow, "id">) => `scheduled-finish:${row.id}`;
+
 function scheduleOf(row: ScheduleRow): FinishSchedule {
   return {
     event: row.event,
@@ -81,10 +109,12 @@ function scheduleOf(row: ScheduleRow): FinishSchedule {
  * system principal attributed to the organiser who scheduled it (`NFR-7`) — the
  * same transition as a manual finish, `releaseAll` included for an event still
  * selling. A ledger refusal — the event cancelled meanwhile, say — is recorded on
- * the schedule, not retried.
+ * the schedule, not retried. A run left without a verdict — the process stopped
+ * mid-run, or the submission failed — stays `running` until reconciliation
+ * (`T-021-17`) settles it without a second submission while the first can land.
  */
 export function createFinishSchedules(options: FinishSchedulesOptions): FinishSchedules {
-  const { store, authority, ledger, status, now = () => new Date() } = options;
+  const { store, authority, ledger, status, operationLifetime, now = () => new Date() } = options;
   const onError = options.onError ?? ((error: unknown) => console.error(error));
   const notify = options.notify ?? (async () => {});
 
@@ -94,6 +124,143 @@ export function createFinishSchedules(options: FinishSchedulesOptions): FinishSc
         event,
       ])
     ).rows[0] ?? null;
+
+  /**
+   * Runs `work` holding the schedule's run lock, on a connection of its own; answers
+   * `false` without running it when another process holds the lock. The lock is a
+   * session lock: a process that dies mid-run releases it with its connection.
+   */
+  async function withRunLock(
+    id: string,
+    work: (client: pg.PoolClient) => Promise<void>,
+  ): Promise<boolean> {
+    const client = await store.connect();
+    let broken: Error | undefined;
+    try {
+      const locked = await client.query<{ locked: boolean }>(
+        "SELECT pg_try_advisory_lock($1, hashtext($2)) AS locked",
+        [FINISH_RUN_LOCK_NAMESPACE, id],
+      );
+      if (locked.rows[0]?.locked !== true) return false;
+      try {
+        await work(client);
+      } finally {
+        await client
+          .query("SELECT pg_advisory_unlock($1, hashtext($2))", [FINISH_RUN_LOCK_NAMESPACE, id])
+          .catch((error: Error) => {
+            broken = error;
+          });
+      }
+      return true;
+    } finally {
+      // A connection whose unlock failed is discarded, and its lock with it.
+      client.release(broken);
+    }
+  }
+
+  /** Runs a claimed finish, and records how it ended. */
+  async function run(row: ScheduleRow): Promise<void> {
+    const request: EventsRequest = {
+      requestId: requestIdOf(row),
+      principal: { kind: "system", organiserId: row.organiser_id, task: "scheduled-finish" },
+    };
+    try {
+      await status.finish(row.organiser_id, request, row.event);
+      await store.query(
+        "UPDATE finish_schedules SET status = 'finished', ended_at = $2 WHERE id = $1",
+        [row.id, now()],
+      );
+    } catch (error) {
+      if (error instanceof SpecCodeError) {
+        await store.query(
+          `UPDATE finish_schedules SET status = 'refused', error_code = $2, ended_at = $3
+           WHERE id = $1`,
+          [row.id, error.code, now()],
+        );
+      }
+      // No verdict: the finish stays running. The submission, if one was made, may
+      // still be accepted, so reconciliation decides — never a second submission
+      // while the first can land.
+      onError(error);
+    }
+  }
+
+  /**
+   * Settles one schedule left running, holding its run lock (`T-021-17`):
+   * 1. the ledger has the event `Finished` — whether this run's submission landed
+   *    or anyone else's — so the schedule is `finished`, with nothing submitted;
+   * 2. the audit log has the run's submission refused, so it is `refused`, with the
+   *    ledger's code;
+   * 3. a submission of the run is still without a verdict, and within its lifetime
+   *    (plus {@link OPERATION_EXPIRY_MARGIN_MS}), so it may still land: the schedule
+   *    stays `running`, for a later pass;
+   * 4. otherwise nothing of the run can land any more — nothing was signed (every
+   *    signature has a prior audit row, `NFR-7`), or what was has expired — so it
+   *    is `scheduled` again, and runs as any due finish does.
+   */
+  async function settle(client: pg.PoolClient, row: ScheduleRow): Promise<boolean> {
+    const found = await ledger.getEvent(row.event as EventId);
+    if (!found.ok) throw new SpecCodeError(found.error.code, found.error.detail);
+    if (found.value.status === "Finished") {
+      await client.query(
+        "UPDATE finish_schedules SET status = 'finished', ended_at = $2 WHERE id = $1",
+        [row.id, now()],
+      );
+      return true;
+    }
+    const audited = await client.query<{
+      outcome: "pending" | "settled" | "rejected" | "failed";
+      error_code: string | null;
+      recorded_at: Date;
+    }>(
+      `SELECT outcome, error_code, recorded_at FROM audit_log
+       WHERE request_id = $1 AND command_kind = 'setEventStatus'
+       ORDER BY recorded_at DESC`,
+      [requestIdOf(row)],
+    );
+    const refused = audited.rows.find((entry) => entry.outcome === "rejected");
+    if (refused !== undefined) {
+      await client.query(
+        `UPDATE finish_schedules SET status = 'refused', error_code = $2, ended_at = $3
+         WHERE id = $1`,
+        [row.id, refused.error_code, now()],
+      );
+      return true;
+    }
+    const at = now().getTime();
+    const mayLand = audited.rows.some(
+      (entry) =>
+        (entry.outcome === "pending" || entry.outcome === "failed") &&
+        entry.recorded_at.getTime() + operationLifetime + OPERATION_EXPIRY_MARGIN_MS > at,
+    );
+    if (mayLand) return false;
+    await client.query("UPDATE finish_schedules SET status = 'scheduled' WHERE id = $1", [row.id]);
+    return true;
+  }
+
+  async function reconcile(): Promise<number> {
+    const running = await store.query<{ id: string }>(
+      "SELECT id FROM finish_schedules WHERE status = 'running' ORDER BY finish_at, id",
+    );
+    let settled = 0;
+    for (const { id } of running.rows) {
+      try {
+        await withRunLock(id, async (client) => {
+          const row = (
+            await client.query<ScheduleRow>(
+              `SELECT ${COLUMNS} FROM finish_schedules WHERE id = $1 AND status = 'running'`,
+              [id],
+            )
+          ).rows[0];
+          if (row !== undefined && (await settle(client, row))) settled += 1;
+        });
+      } catch (error) {
+        // The ledger or the store is unavailable: left running, for the next pass.
+        onError(error);
+      }
+    }
+    return settled;
+  }
 
   return {
     async schedule(organiserId, request, input) {
@@ -152,6 +319,7 @@ export function createFinishSchedules(options: FinishSchedulesOptions): FinishSc
     },
 
     async runDue() {
+      const reconciled = await reconcile();
       const at = now();
       const noticed = await store.query<ScheduleRow>(
         `UPDATE finish_schedules SET noticed_at = $1
@@ -168,46 +336,40 @@ export function createFinishSchedules(options: FinishSchedulesOptions): FinishSc
         }).catch(onError);
       }
 
-      // Claimed one statement at a time, so two schedulers never run the same finish.
-      const due = await store.query<ScheduleRow>(
-        `UPDATE finish_schedules SET status = 'running'
+      const due = await store.query<{ id: string }>(
+        `SELECT id FROM finish_schedules
          WHERE status = 'scheduled' AND noticed_at IS NOT NULL AND finish_at <= $1
-         RETURNING ${COLUMNS}`,
+         ORDER BY finish_at, id`,
         [at],
       );
-      for (const row of due.rows) {
-        const request: EventsRequest = {
-          requestId: `scheduled-finish:${row.id}`,
-          principal: { kind: "system", organiserId: row.organiser_id, task: "scheduled-finish" },
-        };
-        try {
-          await status.finish(row.organiser_id, request, row.event);
-          await store.query(
-            "UPDATE finish_schedules SET status = 'finished', ended_at = $2 WHERE id = $1",
-            [row.id, now()],
+      let ran = 0;
+      for (const { id } of due.rows) {
+        await withRunLock(id, async (client) => {
+          // Claimed under the schedule's lock, so two schedulers never run the same finish.
+          const claimed = await client.query<ScheduleRow>(
+            `UPDATE finish_schedules SET status = 'running'
+             WHERE id = $1 AND status = 'scheduled' AND noticed_at IS NOT NULL AND finish_at <= $2
+             RETURNING ${COLUMNS}`,
+            [id, at],
           );
-        } catch (error) {
-          if (error instanceof SpecCodeError) {
-            await store.query(
-              `UPDATE finish_schedules SET status = 'refused', error_code = $2, ended_at = $3
-               WHERE id = $1`,
-              [row.id, error.code, now()],
-            );
-          } else {
-            // No verdict: back to scheduled, to run on the next pass.
-            await store.query("UPDATE finish_schedules SET status = 'scheduled' WHERE id = $1", [
-              row.id,
-            ]);
-          }
-          onError(error);
-        }
+          const row = claimed.rows[0];
+          if (row === undefined) return;
+          ran += 1;
+          await run(row);
+        });
       }
-      return { noticed: noticed.rowCount ?? 0, ran: due.rowCount ?? 0 };
+      return { reconciled, noticed: noticed.rowCount ?? 0, ran };
     },
+
+    reconcile,
   };
 }
 
-/** The scheduler in the background: `runDue` every `FINISH_SCHEDULER_INTERVAL_MS`. */
+/**
+ * The scheduler in the background: `runDue` once on start — so a finish a previous
+ * process left running is reconciled at start-up (`T-021-17`) — then every
+ * `FINISH_SCHEDULER_INTERVAL_MS`.
+ */
 export interface FinishScheduler {
   start(): void;
   stop(): Promise<void>;
@@ -223,9 +385,11 @@ export function finishScheduler(
   return {
     start() {
       if (timer !== undefined) return;
-      timer = setInterval(() => {
+      const pass = () => {
         running = running.then(() => schedules.runDue().then(() => {}, onError));
-      }, intervalMs);
+      };
+      timer = setInterval(pass, intervalMs);
+      pass();
       timer.unref();
     },
     async stop() {

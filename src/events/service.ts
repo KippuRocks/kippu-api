@@ -29,6 +29,11 @@ export interface EventsOptions {
   readonly saleActions: () => OrganiserSaleActions;
   /** The ledger's maximum pass window, in milliseconds, from the rules configuration (`ledgerLimits`). */
   readonly maxPassWindow: number;
+  /**
+   * How long an assembled command stays valid, in milliseconds: the SDK's
+   * `operationLifetime`, which scheduled finishes reconcile against (`T-021-17`).
+   */
+  readonly operationLifetime: number;
   /** The public origin metadata locators name (`AD-22`); defaults to `https://meta.kippu.rocks`. */
   readonly metadataPublicUrl?: string;
   readonly now?: () => Date;
