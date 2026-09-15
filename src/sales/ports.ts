@@ -27,9 +27,20 @@ export interface BeginCheckoutInput {
   readonly placement: PlacementInput;
 }
 
-/** A checkout, by the token `beginCheckout` returned. */
+/** A checkout, by the token `beginCheckout` returned: the checkout page's own. */
 export interface CheckoutTokenInput {
   readonly token: string;
+}
+
+/** A checkout's handoff, by the handoff token Saifu was given. */
+export interface HandoffTokenInput {
+  readonly handoffToken: string;
+}
+
+/** The buyer's confirmation, on the checkout page, that Saifu shows the same pairing code. */
+export interface ConfirmLinkInput extends CheckoutTokenInput {
+  /** The pairing code the page showed. */
+  readonly pairingCode: string;
 }
 
 /**
@@ -37,21 +48,40 @@ export interface CheckoutTokenInput {
  * (`AD-19` A): Ichiba passes it to Saifu — by universal link, or by QR code on
  * desktop — and Saifu, signed in as the holder, links the account to the
  * checkout with `sales.checkout.link`.
+ *
+ * The handoff token is not the checkout's token. It can be seen, so it only
+ * links: confirming the link, holding and paying need the checkout page's token
+ * (`F-022` plan §5.1, handoff pairing). Discarding a link replaces it.
  */
 export interface SaifuHandoff {
-  /** The checkout's token. Whoever presents it with a holder session links their account. */
-  readonly token: string;
+  readonly handoffToken: string;
 }
 
 /**
  * Whether the checkout has the holder account its ticket will be issued to
- * (`AC-B4.1`). A checkout proceeds only once it has one.
+ * (`AC-B4.1`). A checkout holds and pays only once its link is confirmed.
  */
 export type CheckoutAccount =
-  /** Linked: the checkout proceeds, and the ticket will be issued to `holder`. */
-  | { readonly state: "linked"; readonly holder: string }
   /** No holder account yet: hand off to Saifu, and wait for the link. */
-  | { readonly state: "handoff"; readonly handoff: SaifuHandoff };
+  | { readonly state: "handoff"; readonly handoff: SaifuHandoff }
+  /**
+   * Saifu linked an account, not yet confirmed. The page shows `pairingCode`,
+   * Saifu shows its own; the buyer confirms they match (`confirmLink`), or
+   * discards the link (`discardLink`).
+   */
+  | { readonly state: "pairing"; readonly pairingCode: string }
+  /** Linked and confirmed: the checkout proceeds, and the ticket will be issued to `holder`. */
+  | { readonly state: "linked"; readonly holder: string };
+
+/** What Saifu shows once it has linked the holder's account: what is being bought, and the pairing code. */
+export interface HandoffLink {
+  readonly event: string;
+  readonly zone: string;
+  readonly class: string;
+  readonly placement: PlacementInput;
+  /** The code the checkout page shows too. */
+  readonly pairingCode: string;
+}
 
 /**
  * Where a checkout's hold stands (`REQ-HD-1`). `outstanding` counts against
@@ -79,6 +109,11 @@ export interface Checkout {
   readonly hold: CheckoutHold | null;
   /** ISO 8601. */
   readonly createdAt: string;
+  /**
+   * ISO 8601. When the checkout expires unless a hold is placed first; `null`
+   * once one is, since a hold carries its own lifetime.
+   */
+  readonly expiresAt: string | null;
 }
 
 /**
@@ -102,8 +137,14 @@ export interface BegunCheckout {
 }
 
 export type CheckoutFailure =
-  /** No checkout has this token. */
+  /** No checkout has this token, or it expired with no hold. */
   | "unknown-checkout"
+  /** The checkout's link is not confirmed on the checkout page yet. */
+  | "link-unconfirmed"
+  /** The checkout has no unconfirmed link to confirm or discard. */
+  | "not-pairing"
+  /** The pairing code is not the one the checkout shows. */
+  | "pairing-code-mismatch"
   /** The checkout is already linked to another holder account. */
   | "linked-to-another-account"
   /** The checkout has no holder account yet: hand off to Saifu first (`AC-B4.1`). */
@@ -137,16 +178,24 @@ export interface Sales {
   /** The checkout `token` names. */
   checkout(token: string): Promise<Checkout>;
   /**
-   * Links the holder's account to the checkout `token` names (`AD-19` A). Linking
-   * the same account again changes nothing; another account is refused. Only a
-   * holder principal links.
+   * Links the holder's account to the checkout `handoffToken` hands off
+   * (`AD-19` A), unconfirmed, and answers with the pairing code. Linking the same
+   * account again changes nothing; another account is refused. Only a holder
+   * principal links.
    */
-  linkCheckout(request: SalesRequest, token: string): Promise<Checkout>;
+  linkCheckout(request: SalesRequest, handoffToken: string): Promise<HandoffLink>;
+  /** Confirms the checkout's link, provided `pairingCode` is the one it shows. */
+  confirmLink(request: SalesRequest, token: string, pairingCode: string): Promise<Checkout>;
+  /**
+   * Discards the checkout's unconfirmed link, and replaces the handoff token: the
+   * one that was seen links nothing any more.
+   */
+  discardLink(request: SalesRequest, token: string): Promise<Checkout>;
   /**
    * Places the checkout's hold (`REQ-HD-1`, `REQ-HD-3`): in one transaction, it is
    * counted against the event's capacity, the class's quota and, in a seated zone,
    * the seat. Refused — before any payment — when any is exhausted (`AC-B4.4`).
-   * The checkout must have a holder account. Asking again while the hold is
+   * The checkout's link must be confirmed. Asking again while the hold is
    * outstanding answers with the same hold; once it has lapsed or been released,
    * the checkout is over.
    */

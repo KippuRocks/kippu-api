@@ -234,6 +234,12 @@ The `events` router is the organiser's. Every procedure acts for the signed-in o
   - Saifu links the guest's holder account (`auth.holder.*`) and redeems the token in that holder session. Redemption claims the invitation atomically and runs granted issuance for the invitation's organiser, audited against the holder's session: the ticket is issued once.
   - An unknown token is `NOT_FOUND`; a redeemed one `CONFLICT`. A refused issuance — quota, capacity, a ledger rule — reopens the invitation; one with no ledger verdict leaves it `failed`, since the ticket may exist.
 
+### Checkout, handoff pairing and holds (`F-022`)
+
+- **Checkout** (`sales.checkout.*`): `begin` for what the buyer picked returns the page's `token`, once. With a holder session the checkout is linked at once; otherwise it carries a Saifu handoff with a separate `handoffToken`, which only links.
+- **Pairing** (plan §5.1, ruled in `M2`): Saifu links with the handoff token and gets a 6-digit pairing code; the checkout page shows the same code, and the buyer confirms the match (`confirmLink`) or discards the link (`discardLink`, which replaces the handoff token). An unconfirmed link cannot hold.
+- **Lifetime**: a checkout with no hold expires an hour after it began. A hold lives 10 minutes, extendable once by 5 (`src/sales/holds.ts`), counted with `src/sales/allocation.ts`.
+
 ### Payments (`F-022`)
 
 Checkout takes payment through a provider's **hosted checkout** (`F-022` plan §5.4): Kippu creates a checkout for a hold, expiring with it; the buyer is redirected to the provider's page and pays there by card or PSE (never cash); the provider's HMAC-signed webhook is trusted only once the checkout, retrieved, is paid for the expected amount and hold. Kippu passes no payer details and sees no payment details. There is no authorise/capture split and no refund call: refunds are entitlements (plan §5.5).

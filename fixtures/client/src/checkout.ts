@@ -2,6 +2,7 @@ import type {
   AppRouter,
   BeginCheckoutInput,
   Checkout,
+  HandoffLink,
   HoldRefusal,
   SaifuHandoff,
 } from "@kippu/api";
@@ -19,12 +20,23 @@ export async function beginCheckout(input: BeginCheckoutInput): Promise<SaifuHan
   return checkout.account.state === "handoff" ? checkout.account.handoff : null;
 }
 
-/** How Saifu links the holder's account to the checkout it was handed (`AD-19` A). */
-export async function linkCheckout(holderToken: string, handoff: SaifuHandoff): Promise<Checkout> {
+/** How Saifu links the holder's account to the checkout it was handed, and gets the pairing code (`AD-19` A). */
+export async function linkCheckout(
+  holderToken: string,
+  handoff: SaifuHandoff,
+): Promise<HandoffLink> {
   const saifu = createTRPCClient<AppRouter>({
     links: [httpBatchLink({ url, headers: { authorization: `Bearer ${holderToken}` } })],
   });
-  return saifu.sales.checkout.link.mutate({ token: handoff.token });
+  return saifu.sales.checkout.link.mutate({ handoffToken: handoff.handoffToken });
+}
+
+/** How Ichiba confirms, once the buyer says Saifu shows the same code (`T-022-11`). */
+export async function confirmPairing(token: string): Promise<Checkout | null> {
+  const ichiba = createTRPCClient<AppRouter>({ links: [httpBatchLink({ url })] });
+  const { account } = await ichiba.sales.checkout.get.query({ token });
+  if (account.state !== "pairing") return null;
+  return ichiba.sales.checkout.confirmLink.mutate({ token, pairingCode: account.pairingCode });
 }
 
 /** How Ichiba places the hold (`T-022-03`): a refusal is shown before any payment step. */
