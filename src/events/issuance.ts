@@ -14,11 +14,18 @@ import type { OrganiserAuthority } from "../authority/authority.js";
 import { RefusedRequest, SpecCodeError } from "../authority/errors.js";
 import type { Classes } from "../classes/classes.js";
 import type { KippuTicketto } from "../ledger/ticketto.js";
+import {
+  type AllocationTarget,
+  allocationCounts,
+  capacityHasRoom,
+  lockAllocation,
+  quotaHasRoom,
+} from "../sales/allocation.js";
 import type { Store } from "../store/store.js";
 import { ownedEvent } from "./ownership.js";
 import type { EventsRequest, IssuedTicket, IssueGrantedInput, TicketClass } from "./ports.js";
 import type { SeatAllocation } from "./seats.js";
-import { positionOf, type Zones } from "./zones.js";
+import { normaliseDesignation, positionOf, type Zones } from "./zones.js";
 
 /** Bytes in an unseated placement's discriminator: 128 random bits (`AD-12`). */
 export const DISCRIMINATOR_BYTES = 16;
@@ -62,43 +69,67 @@ export function issueGrantedWith(options: IssuanceOptions) {
   const random = options.randomBytes ?? ((length: number) => randomBytes(length));
 
   /**
-   * Records the issuance, provided the seat — for a canonical seat — is free
-   * (`AC-B5.2`) and the class quota has room. The seat is locked first, as every
-   * allocation of a seat locks it first. Returns the record's id.
+   * Records the issuance, provided it fits what is already allocated: tickets,
+   * issuances in flight, and checkouts' outstanding holds (`REQ-HD-3`,
+   * `REQ-HD-4`), counted with `F-022`'s accounting (`src/sales/allocation.ts`).
+   *
+   * Under the seat lock and then the event's allocation lock — the order every
+   * allocation takes them — in turn:
+   * 1. a canonical seat is free: no ticket, no issuance in flight (`AC-B5.2`,
+   *    `ERR-TicketIdExists`), and no buyer's hold on it (refused, with no §10 code);
+   * 2. the event's capacity has room once holds count (`ERR-CapacityExceeded`),
+   *    while the event is `Active` — any other status is the ledger's to refuse;
+   * 3. the class quota has room once holds count (`ERR-ClassQuotaExceeded`).
+   *
+   * Returns the record's id.
    */
   const reserve = async (
     organiserId: string,
     request: EventsRequest,
     input: IssueGrantedInput,
-    seat: Position | null,
+    seat: { readonly position: Position; readonly designation: string } | null,
   ): Promise<string> => {
     const client = await store.connect();
     try {
       await client.query("BEGIN");
-      let ticket: string | null = null;
-      if (seat !== null) {
-        await seats.lock(client, input.event, input.zone, seat);
-        ticket = await seats.assertFree(client, input.event, input.zone, seat);
-      }
-      const locked = await client.query<{ quota: string | null }>(
-        "SELECT quota FROM ticket_classes WHERE id = $1 AND event = $2 FOR UPDATE",
+      const target: AllocationTarget = {
+        event: input.event,
+        zone: input.zone,
+        classId: input.class,
+        position: seat?.designation ?? null,
+      };
+      await lockAllocation(client, seats, target);
+      const known = await client.query(
+        "SELECT 1 FROM ticket_classes WHERE id = $1 AND event = $2",
         [input.class, input.event],
       );
-      const row = locked.rows[0];
-      if (row === undefined) {
+      if ((known.rowCount ?? 0) === 0) {
         throw new SpecCodeError("ERR-UnknownClass", "the class is not defined for the event");
       }
-      if (row.quota !== null) {
-        const counted = await client.query<{ count: string }>(
-          "SELECT count(*) FROM granted_issuances WHERE class_id = $1 AND status <> 'rejected'",
-          [input.class],
-        );
-        if (Number(counted.rows[0]?.count) >= Number(row.quota)) {
-          throw new SpecCodeError(
-            "ERR-ClassQuotaExceeded",
-            `the class quota of ${row.quota} is reached`,
-          );
+      const counts = await allocationCounts(client, target, now());
+
+      let ticket: string | null = null;
+      if (seat !== null) {
+        ticket = await seats.assertFree(client, input.event, input.zone, seat.position);
+        if (counts.seatHeld) {
+          throw new RefusedRequest("the seat is held by a buyer's checkout", "CONFLICT");
         }
+      }
+      const found = await ledger.getEvent(input.event as EventId);
+      if (!found.ok) {
+        throw new SpecCodeError(found.error.code, found.error.detail);
+      }
+      if (found.value.status === "Active" && !capacityHasRoom(found.value, counts)) {
+        throw new SpecCodeError(
+          "ERR-CapacityExceeded",
+          "the event's capacity is taken by tickets issued and outstanding holds",
+        );
+      }
+      if (!quotaHasRoom(counts)) {
+        throw new SpecCodeError(
+          "ERR-ClassQuotaExceeded",
+          `the class quota of ${counts.quota} is taken by tickets issued and outstanding holds`,
+        );
       }
       const inserted = await client.query<{ id: string }>(
         `INSERT INTO granted_issuances
@@ -180,16 +211,23 @@ export function issueGrantedWith(options: IssuanceOptions) {
 
     let placement: Placement;
     // A canonical seat of a seated zone, checked for double allocation before submission.
-    let seat: Position | null = null;
+    let seat: { readonly position: Position; readonly designation: string } | null = null;
     if (input.placement.kind === "Seated") {
       const zone = event.zones.find(({ id }) => id === input.zone);
       if (zone?.kind === "Seated") {
-        seat = await zones.canonicalPosition(input.event, input.zone, input.placement.position);
+        seat = {
+          position: await zones.canonicalPosition(
+            input.event,
+            input.zone,
+            input.placement.position,
+          ),
+          designation: normaliseDesignation(input.placement.position),
+        };
       }
       placement = {
         kind: "Seated",
         // The ledger refuses a seat in an unknown or unseated zone with its own code.
-        position: seat ?? positionOf(input.placement.position),
+        position: seat?.position ?? positionOf(input.placement.position),
       };
     } else {
       placement = {
