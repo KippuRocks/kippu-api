@@ -564,12 +564,12 @@ packages:
     engines: {node: '>=18.0.0'}
 
   '@ticketto/backend-memory@file:vendor/libticketto/ticketto-backend-memory-0.0.0.tgz':
-    resolution: {integrity: sha512-Ys67TD+7CuC8jtOrPUsKjenIzkAJ97XxO0sTPi8g+Xdu/4jU7nfwnxaQTQ6tnic7d8cn71Cau4bT1cz8e2ijug==, tarball: file:vendor/libticketto/ticketto-backend-memory-0.0.0.tgz}
+    resolution: {integrity: sha512-+8LRIoNRbCIfMTOHnhE1WEE8vw9EqiDvSjkJP79ABAE+7bzlNioLZi+hgU8iKsWMJTpJ1IZ1aXZfSfW/RLEwBw==, tarball: file:vendor/libticketto/ticketto-backend-memory-0.0.0.tgz}
     version: 0.0.0
     engines: {node: '>=24'}
 
   '@ticketto/binding-offchain@file:vendor/libticketto/ticketto-binding-offchain-0.0.0.tgz':
-    resolution: {integrity: sha512-J0mNgmEhx0uUSB4cuJAemONdpimPsdq2JAxhRt8h0uPy9N6zkOkcxXVxikRe+uDLAYuCoZ9rwe6Gfj3LglPCLQ==, tarball: file:vendor/libticketto/ticketto-binding-offchain-0.0.0.tgz}
+    resolution: {integrity: sha512-gI3CBJhWOfM3UchzW66YrEL2T8PmogB/zfUyClO2g/SB9ulLrpSa7jPtFjS7zs0HAHqHRwYCtHb8Xgye5GUBTw==, tarball: file:vendor/libticketto/ticketto-binding-offchain-0.0.0.tgz}
     version: 0.0.0
     engines: {node: '>=24'}
 

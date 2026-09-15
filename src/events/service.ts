@@ -10,6 +10,7 @@ import { createInvitations, type Invitations } from "./invitations.js";
 import { issueGrantedWith } from "./issuance.js";
 import { createPassWindows, type PassWindows } from "./pass-window.js";
 import type { Events } from "./ports.js";
+import { removeRestrictionWith } from "./restrictions.js";
 import { createSaleAssets, type SaleAssets } from "./sale-assets.js";
 import { createSeatAllocation, type SeatAllocation } from "./seats.js";
 import { createStatusTransitions, type StatusTransitions } from "./status.js";
@@ -91,6 +92,7 @@ export function createEvents(options: EventsOptions): Events & {
       zones.addSeatPositions(organiserId, request, input),
     seatPositions: (organiserId, input) => zones.seatPositions(organiserId, input),
     issueGranted,
+    removeRestriction: removeRestrictionWith(options),
     createInvitation: (organiserId, request, input) =>
       invitations.create(organiserId, request, input),
     listInvitations: (organiserId, input) => invitations.list(organiserId, input),

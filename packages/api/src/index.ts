@@ -19,6 +19,8 @@ export type {
   EventSaleAsset,
   FinishSchedule,
   InvitationRefusal,
+  RemoveRestrictionInput,
+  RestrictionRemoved,
   SaleAsset,
   ScheduleFinishInput,
   SetClassPriceInput,
