@@ -9,6 +9,7 @@ import type {
   Result,
   ZoneId,
 } from "@ticketto/sdk";
+import { commandOfSigningPayload } from "../audit/relay.js";
 import type { HolderPrincipal } from "../auth/ports.js";
 import { hashSecret } from "../auth/service.js";
 import type { OrganiserAuthority } from "../authority/authority.js";
@@ -26,6 +27,13 @@ import {
   lockAllocation,
   quotaHasRoom,
 } from "./allocation.js";
+import {
+  type CheckoutActor,
+  type CheckoutCause,
+  PAYMENT_PROVIDER,
+  recordCheckoutStep,
+  SWEEP,
+} from "./audit.js";
 import { HOLD_EXTENSION_MS } from "./holds.js";
 import type { HostedCheckout, PaymentProvider } from "./payments/ports.js";
 import {
@@ -68,7 +76,7 @@ export interface Payments {
    * payment for the hold's price issues the ticket, or records a refund
    * entitlement when it cannot. Idempotent.
    */
-  reconcile(requestId: string, providerCheckoutId: string): Promise<void>;
+  reconcile(requestId: string, providerCheckoutId: string, actor?: CheckoutActor): Promise<void>;
   /**
    * Records lapsed holds, then cancels the open hosted checkouts of holds that
    * ended; a payment that landed first is reconciled instead (plan §5.1 step 6).
@@ -193,24 +201,36 @@ export function createPayments(options: PaymentsOptions): Payments {
       [holdId, now()],
     );
 
-  const entitle = (
+  const entitle = async (
     db: Queryable,
+    cause: CheckoutCause,
     hosted: HostedRow,
     checkoutId: string,
     amount: number,
     asset: string,
     reason: CheckoutRefund["reason"],
-  ) =>
-    db.query(
+  ) => {
+    const at = now();
+    const inserted = await db.query(
       `INSERT INTO refund_entitlements
          (id, hosted_checkout_id, checkout_id, amount, asset, reason, created_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7)
        ON CONFLICT (hosted_checkout_id) DO NOTHING`,
-      [randomUUID(), hosted.id, checkoutId, amount, asset, reason, now()],
+      [randomUUID(), hosted.id, checkoutId, amount, asset, reason, at],
     );
+    if (inserted.rowCount === 1) {
+      await recordCheckoutStep(db, checkoutId, "refund-entitled", cause, at, {
+        reason,
+        amount,
+        asset,
+        providerCheckout: hosted.provider_checkout_id,
+      });
+    }
+  };
 
   /** Under a transaction: takes the verified payment's place, or records why it cannot. */
   const takePlace = async (
+    cause: CheckoutCause,
     hosted: HostedRow,
     remote: HostedCheckout,
   ): Promise<{ saleId: string; hold: HoldRow } | null> => {
@@ -241,11 +261,17 @@ export function createPayments(options: PaymentsOptions): Payments {
         await client.query("COMMIT");
         return null;
       }
+      await recordCheckoutStep(client, hold.checkout_id, "payment-verified", cause, now(), {
+        providerCheckout: hosted.provider_checkout_id,
+        amount: remote.amount,
+        asset: remote.asset,
+      });
 
       // Trusted only for the hold's amount and asset (plan §5.4).
       if (remote.amount !== Number(hosted.amount) || remote.asset !== hosted.asset) {
         await entitle(
           client,
+          cause,
           hosted,
           hold.checkout_id,
           remote.amount,
@@ -287,7 +313,15 @@ export function createPayments(options: PaymentsOptions): Payments {
       }
       if (!placed) {
         // Gone, or the hold is already another payment's.
-        await entitle(client, hosted, hold.checkout_id, remote.amount, remote.asset, "place-gone");
+        await entitle(
+          client,
+          cause,
+          hosted,
+          hold.checkout_id,
+          remote.amount,
+          remote.asset,
+          "place-gone",
+        );
         await client.query("COMMIT");
         return null;
       }
@@ -313,7 +347,7 @@ export function createPayments(options: PaymentsOptions): Payments {
 
   /** Issues the paid hold's ticket through the organiser's authority, and records the outcome. */
   const issue = async (
-    requestId: string,
+    cause: CheckoutCause,
     hosted: HostedRow,
     saleId: string,
     hold: HoldRow,
@@ -350,6 +384,12 @@ export function createPayments(options: PaymentsOptions): Payments {
              VALUES ($1, $2, $3, $4, $5, $6, $7)`,
             [fields.ticket, hold.event, hold.class_id, saleId, hold.price, hold.asset, now()],
           );
+          await recordCheckoutStep(client, hold.checkout_id, "issued", cause, now(), {
+            sale: saleId,
+            ticket: fields.ticket ?? null,
+            operation: operationId,
+            cursor: fields.cursor ?? null,
+          });
         } else if (status === "rejected") {
           // Not issued: the place is given back, whatever the hold's lifetime said.
           await client.query(
@@ -357,14 +397,25 @@ export function createPayments(options: PaymentsOptions): Payments {
              WHERE id = $1 AND status = 'issuing'`,
             [hold.hold_id, now()],
           );
+          await recordCheckoutStep(client, hold.checkout_id, "issuance-rejected", cause, now(), {
+            sale: saleId,
+            operation: operationId,
+            errorCode: fields.errorCode ?? null,
+          });
           await entitle(
             client,
+            cause,
             hosted,
             hold.checkout_id,
             Number(hosted.amount),
             hosted.asset,
             "issuance-rejected",
           );
+        } else {
+          await recordCheckoutStep(client, hold.checkout_id, "issuance-failed", cause, now(), {
+            sale: saleId,
+            operation: operationId,
+          });
         }
         await client.query("COMMIT");
       } catch (error) {
@@ -375,6 +426,8 @@ export function createPayments(options: PaymentsOptions): Payments {
       }
     };
 
+    // The operation the issuance is signed as: its audit_log row is the sale's (T-022-09).
+    let operationId: string | null = null;
     let issued: Awaited<ReturnType<KippuTicketto["issueTicket"]>>;
     try {
       const organiser = (
@@ -402,19 +455,32 @@ export function createPayments(options: PaymentsOptions): Payments {
         account: hold.holder_account as string,
         sessionId: hold.linked_session_id as string,
       };
-      issued = await authority.relay(organiser.organiser_id, { requestId, principal }, (signer) =>
-        ledger.issueTicket(signer, {
-          event: hold.event as EventId,
-          zone: hold.zone as ZoneId,
-          placement,
-          class: hold.class_id as ClassId,
-          provenance: "Purchased",
-          policy: ticketClass.policy,
-          // A purchased ticket carries no restriction (REQ-TK-3), and no price (AC-B4.2).
-          restrictions: { cannotResale: false, cannotTransfer: false },
-          holder: hold.holder_account as AccountId,
-          metadata: null,
-        }),
+      const { requestId } = cause;
+      issued = await authority.relay(
+        organiser.organiser_id,
+        { requestId, principal },
+        (audited) => {
+          const signer: typeof audited = {
+            account: audited.account,
+            async sign(payload) {
+              const signature = await audited.sign(payload);
+              operationId = commandOfSigningPayload(payload)?.operationId ?? null;
+              return signature;
+            },
+          };
+          return ledger.issueTicket(signer, {
+            event: hold.event as EventId,
+            zone: hold.zone as ZoneId,
+            placement,
+            class: hold.class_id as ClassId,
+            provenance: "Purchased",
+            policy: ticketClass.policy,
+            // A purchased ticket carries no restriction (REQ-TK-3), and no price (AC-B4.2).
+            restrictions: { cannotResale: false, cannotTransfer: false },
+            holder: hold.holder_account as AccountId,
+            metadata: null,
+          });
+        },
       );
     } catch (error) {
       // Nothing was signed: the ticket does not exist.
@@ -423,14 +489,23 @@ export function createPayments(options: PaymentsOptions): Payments {
       return;
     }
     await store.query("UPDATE primary_sales SET ticket = $2 WHERE id = $1", [saleId, issued.id]);
+    const recordOperation = () =>
+      operationId === null
+        ? Promise.resolve()
+        : store.query("UPDATE primary_sales SET operation_id = $2 WHERE id = $1", [
+            saleId,
+            operationId,
+          ]);
     let outcome: Result<Receipt>;
     try {
       outcome = await issued.submission;
     } catch (error) {
+      await recordOperation();
       await complete("failed");
       onError(error);
       return;
     }
+    await recordOperation();
     if (outcome.ok) {
       await complete("issued", { ticket: issued.id, cursor: outcome.value.cursor });
     } else {
@@ -438,7 +513,12 @@ export function createPayments(options: PaymentsOptions): Payments {
     }
   };
 
-  const reconcile = async (requestId: string, providerCheckoutId: string): Promise<void> => {
+  const reconcile = async (
+    requestId: string,
+    providerCheckoutId: string,
+    actor: CheckoutActor = PAYMENT_PROVIDER,
+  ): Promise<void> => {
+    const cause: CheckoutCause = { requestId, actor };
     const hosted = (
       await store.query<HostedRow>(
         `SELECT ${HOSTED_COLUMNS} FROM hosted_checkouts WHERE provider_checkout_id = $1`,
@@ -452,9 +532,9 @@ export function createPayments(options: PaymentsOptions): Payments {
       await recordStatus(store, hosted.id, remote);
       return;
     }
-    const taken = await takePlace(hosted, remote);
+    const taken = await takePlace(cause, hosted, remote);
     if (taken !== null) {
-      await issue(requestId, hosted, taken.saleId, taken.hold);
+      await issue(cause, hosted, taken.saleId, taken.hold);
     }
   };
 
@@ -543,6 +623,19 @@ export function createPayments(options: PaymentsOptions): Payments {
             ],
           )
         ).rows[0] as HostedRow;
+        await recordCheckoutStep(
+          client,
+          hold.checkout_id,
+          "payment-started",
+          { requestId: request.requestId, actor: request.principal },
+          at,
+          {
+            providerCheckout: created.id,
+            amount: Number(hold.price),
+            asset: hold.asset,
+            expiresAt: expiresAt.toISOString(),
+          },
+        );
         await client.query("COMMIT");
         return paymentOf(row);
       } catch (error) {
@@ -551,7 +644,7 @@ export function createPayments(options: PaymentsOptions): Payments {
       } finally {
         client.release();
         if (paidFirst !== null) {
-          await reconcile(request.requestId, paidFirst).catch(onError);
+          await reconcile(request.requestId, paidFirst, request.principal).catch(onError);
         }
       }
     },
@@ -571,6 +664,14 @@ export function createPayments(options: PaymentsOptions): Payments {
           paid.push(open.provider_checkout_id);
         } else {
           await releaseHold(client, hold.hold_id);
+          await recordCheckoutStep(
+            client,
+            hold.checkout_id,
+            "checkout-cancelled",
+            { requestId: request.requestId, actor: request.principal },
+            now(),
+            { providerCheckout: open?.provider_checkout_id ?? null },
+          );
         }
         await client.query("COMMIT");
       } catch (error) {
@@ -579,7 +680,7 @@ export function createPayments(options: PaymentsOptions): Payments {
       } finally {
         client.release();
       }
-      for (const id of paid) await reconcile(request.requestId, id);
+      for (const id of paid) await reconcile(request.requestId, id, request.principal);
     },
 
     async paymentWebhook(requestId, rawBody, headers) {
@@ -616,7 +717,7 @@ export function createPayments(options: PaymentsOptions): Payments {
       for (const hosted of ended.rows) {
         try {
           if (await cancelHosted(store, hosted)) {
-            await reconcile(requestId, hosted.provider_checkout_id);
+            await reconcile(requestId, hosted.provider_checkout_id, SWEEP);
           }
         } catch (error) {
           onError(error);
