@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { OperationId } from "@ticketto/sdk";
 import { createTRPCClient, httpLink, TRPCClientError } from "@trpc/client";
 import type { FastifyInstance } from "fastify";
-import { afterAll, beforeAll, beforeEach, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, expect, it, vi } from "vitest";
 import { buildApp, TRPC_PREFIX } from "../../src/app.js";
 import { createAuditLog } from "../../src/audit/audit-log.js";
 import { createAuth, ORGANISER_SESSION_MS } from "../../src/auth/service.js";
@@ -24,6 +24,9 @@ import {
   describeWithStore,
   type TestDatabase,
 } from "../support/database.js";
+
+// Store-backed: generous timeouts, so a loaded CI host or database does not fail the suite.
+vi.setConfig({ testTimeout: 60_000, hookTimeout: 60_000 });
 
 /** Placeholder hostnames: the real ones are not chosen yet. */
 const LOGIN_RP_ID = "login.kippu.example";

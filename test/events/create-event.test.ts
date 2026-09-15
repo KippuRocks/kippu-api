@@ -7,10 +7,13 @@ import type {
   Placement,
   ZoneId,
 } from "@ticketto/sdk";
-import { afterAll, beforeAll, expect, it } from "vitest";
+import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { describeWithStore } from "../support/database.js";
 import { type EventsHarness, eventsHarness, randomId, refusal } from "../support/events.js";
 import { expectEveryRelayedWriteAudited } from "../support/ledger.js";
+
+// Store-backed: generous timeouts, so a loaded CI host or database does not fail the suite.
+vi.setConfig({ testTimeout: 60_000, hookTimeout: 60_000 });
 
 describeWithStore("creating an event", () => {
   let harness: EventsHarness;

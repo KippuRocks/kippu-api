@@ -1,9 +1,12 @@
 import { DEFAULT_PASS_WINDOW } from "@ticketto/profile-v0";
-import { afterAll, beforeAll, expect, it } from "vitest";
+import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { MIN_PASS_WINDOW_MS } from "../../src/events/pass-window.js";
 import { ledgerLimits } from "../../src/ledger/rules.js";
 import { describeWithStore } from "../support/database.js";
 import { type EventsHarness, eventsHarness, randomId, refusal } from "../support/events.js";
+
+// Store-backed: generous timeouts, so a loaded CI host or database does not fail the suite.
+vi.setConfig({ testTimeout: 60_000, hookTimeout: 60_000 });
 
 describeWithStore("per-event pass window", () => {
   let harness: EventsHarness;

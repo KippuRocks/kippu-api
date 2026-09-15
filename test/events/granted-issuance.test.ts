@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import type { EventId, TicketId } from "@ticketto/sdk";
-import { afterAll, beforeAll, expect, it } from "vitest";
+import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import type { DefineClassInput, IssueGrantedInput } from "../../src/events/ports.js";
 import { positionOf } from "../../src/events/zones.js";
 import { describeWithStore } from "../support/database.js";
@@ -12,6 +12,9 @@ import {
   type TestOrganiser,
 } from "../support/events.js";
 import { expectEveryRelayedWriteAudited } from "../support/ledger.js";
+
+// Store-backed: generous timeouts, so a loaded CI host or database does not fail the suite.
+vi.setConfig({ testTimeout: 60_000, hookTimeout: 60_000 });
 
 /** A holder's account id. Issuance names an account; it holds no credential of the holder's. */
 const holderAccount = () => randomBytes(32).toString("hex");

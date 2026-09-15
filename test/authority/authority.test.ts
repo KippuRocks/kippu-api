@@ -9,7 +9,7 @@ import {
   type Sponsorship,
   type ZoneId,
 } from "@ticketto/sdk";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { AuditError, type AuditLog, createAuditLog } from "../../src/audit/audit-log.js";
 import {
   createOrganiserAuthority,
@@ -30,6 +30,9 @@ import {
 } from "../support/database.js";
 import { expectEveryRelayedWriteAudited } from "../support/ledger.js";
 import { createOrganiser } from "../support/organisers.js";
+
+// Store-backed: generous timeouts, so a loaded CI host or database does not fail the suite.
+vi.setConfig({ testTimeout: 60_000, hookTimeout: 60_000 });
 
 const HOLDER_RP_ID = "holder.kippu.example";
 const profile = createProfileV0({ rpId: HOLDER_RP_ID });

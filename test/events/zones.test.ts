@@ -1,5 +1,5 @@
 import type { ClassId, Discriminator, EventId, ZoneId } from "@ticketto/sdk";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { RefusedRequest } from "../../src/authority/errors.js";
 import { positionOf } from "../../src/events/zones.js";
 import { describeWithStore } from "../support/database.js";
@@ -11,6 +11,9 @@ import {
   type TestOrganiser,
 } from "../support/events.js";
 import { expectEveryRelayedWriteAudited } from "../support/ledger.js";
+
+// Store-backed: generous timeouts, so a loaded CI host or database does not fail the suite.
+vi.setConfig({ testTimeout: 60_000, hookTimeout: 60_000 });
 
 describe("positionOf", () => {
   it("is the designation's UTF-8 bytes, as hex", () => {
