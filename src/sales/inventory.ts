@@ -29,6 +29,7 @@ interface ClassRow {
   readonly id: string;
   readonly name: string;
   readonly description: string | null;
+  readonly price: string;
   readonly policy: AttendancePolicy;
 }
 
@@ -57,14 +58,23 @@ export function createInventory(options: InventoryOptions): Inventory {
         throw new SpecCodeError(found.error.code, found.error.detail);
       }
       const event = found.value;
-      if (event.status !== "Active") {
-        return { event: eventId, onSale: false, available: 0, classes: [], zones: [] };
+      const asset =
+        (
+          await store.query<{ asset: SaleInventory["asset"] }>(
+            "SELECT asset FROM event_sale_assets WHERE event = $1",
+            [eventId],
+          )
+        ).rows[0]?.asset ?? null;
+      // Nothing is held before the organiser chooses what the event's prices are in.
+      if (event.status !== "Active" || asset === null) {
+        return { event: eventId, onSale: false, asset, available: 0, classes: [], zones: [] };
       }
       const at = now();
 
       const classRows = await store.query<ClassRow>(
-        `SELECT id, name, description, policy FROM ticket_classes
-         WHERE event = $1 AND provenance = 'Purchased' ORDER BY created_at, id`,
+        `SELECT id, name, description, price, policy FROM ticket_classes
+         WHERE event = $1 AND provenance = 'Purchased' AND price IS NOT NULL
+         ORDER BY created_at, id`,
         [eventId],
       );
       // The event's counts do not depend on the class or placement; any target reads them.
@@ -86,6 +96,7 @@ export function createInventory(options: InventoryOptions): Inventory {
           id: row.id,
           name: row.name,
           description: row.description,
+          price: Number(row.price),
           policy: row.policy,
           available: lesser(available, quotaRemaining(counts)),
         });
@@ -130,7 +141,7 @@ export function createInventory(options: InventoryOptions): Inventory {
         zones.push({ id: zone.id, kind: "Seated", freeSeats });
       }
 
-      return { event: eventId, onSale: true, available, classes, zones };
+      return { event: eventId, onSale: true, asset, available, classes, zones };
     },
   };
 }

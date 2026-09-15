@@ -54,7 +54,7 @@ async function mapped<T>(work: () => Promise<T>): Promise<T> {
       throw toTRPCError(error);
     }
     if (error instanceof RefusedRequest) {
-      throw new TRPCError({ code: "BAD_REQUEST", message: error.message });
+      throw new TRPCError({ code: error.transport, message: error.message });
     }
     if (error instanceof CheckoutError) {
       throw new TRPCError({ code: TRANSPORT_CODE[error.failure], message: error.message });

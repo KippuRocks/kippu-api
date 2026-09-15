@@ -1,10 +1,16 @@
 import { randomUUID } from "node:crypto";
-import { SpecCodeError } from "../authority/errors.js";
+import { RefusedRequest, SpecCodeError } from "../authority/errors.js";
 import type { SeatAllocation } from "../events/seats.js";
 import { positionOf } from "../events/zones.js";
 import type { KippuTicketto } from "../ledger/ticketto.js";
 import type { Store } from "../store/store.js";
-import { allocationCounts, capacityHasRoom, lockAllocation, quotaHasRoom } from "./allocation.js";
+import {
+  allocationCounts,
+  capacityHasRoom,
+  lockAllocation,
+  quotaHasRoom,
+  saleTerms,
+} from "./allocation.js";
 import { eventOnSale } from "./on-sale.js";
 import { CheckoutError, type HoldRefusal, type SalesRequest } from "./ports.js";
 
@@ -92,6 +98,15 @@ export function createHolds(options: HoldsOptions): Holds {
         }
 
         const event = await eventOnSale(ledger, target.event);
+        // The sale terms in force now are the hold's: a later price change affects only
+        // holds placed afterwards, and the asset is fixed from this hold on (F-021 "Prices").
+        const terms = await saleTerms(client, target.event, target.classId);
+        if (terms === null) {
+          throw new RefusedRequest(
+            "the event has no sale asset, or the class no price: nothing of it can be held yet",
+            "PRECONDITION_FAILED",
+          );
+        }
         let refusal: HoldRefusal | null = null;
         if (seat !== null) {
           // The seat is free only if the ledger, Kippu's granted issuances and its
@@ -119,8 +134,8 @@ export function createHolds(options: HoldsOptions): Holds {
         await client.query(
           `INSERT INTO holds
              (id, checkout_id, event, zone, class_id, position, expires_at, created_request_id,
-              created_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+              created_at, asset, price)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
           [
             randomUUID(),
             target.checkoutId,
@@ -131,6 +146,8 @@ export function createHolds(options: HoldsOptions): Holds {
             new Date(at.getTime() + HOLD_LIFETIME_MS),
             request.requestId,
             at,
+            terms.asset,
+            terms.price,
           ],
         );
         await client.query("COMMIT");

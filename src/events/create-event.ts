@@ -7,6 +7,7 @@ import { SpecCodeError } from "../authority/errors.js";
 import type { KippuTicketto } from "../ledger/ticketto.js";
 import type { Store } from "../store/store.js";
 import type { CreatedEvent, CreateEventInput, EventsRequest } from "./ports.js";
+import type { SaleAssets } from "./sale-assets.js";
 
 /** Bytes in the salt an `EventId` is derived from with the owner's account (`AD-12`). */
 export const EVENT_SALT_BYTES = 32;
@@ -15,6 +16,8 @@ export interface CreateEventOptions {
   readonly store: Store;
   readonly authority: Pick<OrganiserAuthority, "relay">;
   readonly ledger: Pick<KippuTicketto, "createEvent">;
+  /** Records a sale asset chosen at creation (`T-021-14`). */
+  readonly saleAssets: Pick<SaleAssets, "recordAtCreation">;
   /**
    * The public origin metadata locators name (`AD-22`): the metadata
    * configuration's `publicUrl`. Defaults to `https://meta.kippu.rocks`.
@@ -82,6 +85,9 @@ export function createEventWith(options: CreateEventOptions) {
        ON CONFLICT (event) DO NOTHING`,
       [created.id, organiserId, operationId, request.requestId, cursor, now(), locator],
     );
+    if (input.saleAsset !== undefined && input.saleAsset !== null) {
+      await options.saleAssets.recordAtCreation(organiserId, request, created.id, input.saleAsset);
+    }
     return { event: created.id, cursor };
   };
 }

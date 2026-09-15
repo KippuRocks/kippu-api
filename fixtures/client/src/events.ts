@@ -1,4 +1,4 @@
-import type { AppRouter } from "@kippu/api";
+import type { AppRouter, SaleAsset } from "@kippu/api";
 import { createTRPCClient, httpBatchLink } from "@trpc/client";
 
 function organiserClient(token: string) {
@@ -51,6 +51,24 @@ export async function issueGuestSeat(
     holder: input.holder,
   });
   return ticket;
+}
+
+/** How Ibento prices a sale (`T-021-14`): the event's asset, then a Purchased class in its minor units. */
+export async function priceStalls(token: string, event: string): Promise<SaleAsset | null> {
+  const client = organiserClient(token);
+  const { asset } = await client.events.setSaleAsset.mutate({ event, asset: "COPM/2" });
+  const stalls = await client.events.classes.define.mutate({
+    event,
+    name: "Stalls",
+    description: null,
+    provenance: "Purchased",
+    policy: { kind: "Single" },
+    restrictions: { cannotResale: false, cannotTransfer: false },
+    quota: null,
+    price: 25_000,
+  });
+  await client.events.classes.setPrice.mutate({ event, class: stalls.id, price: 30_000 });
+  return asset;
 }
 
 /** How Ibento defines a guest class (`T-021-04`): the router types the class it returns. */

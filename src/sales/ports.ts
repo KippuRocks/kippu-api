@@ -7,7 +7,7 @@
  */
 
 import type { Principal } from "../auth/ports.js";
-import type { PlacementInput } from "../events/ports.js";
+import type { PlacementInput, SaleAsset } from "../events/ports.js";
 
 /** The request a call acts on behalf of: what Kippu attributes the checkout's steps to. */
 export interface SalesRequest {
@@ -220,6 +220,11 @@ export interface ClassOnSale {
   readonly id: string;
   readonly name: string;
   readonly description: string | null;
+  /**
+   * The price a hold placed now is charged: a positive integer in the event's
+   * sale asset's minor units (`F-021` plan, "Prices"). Kippu's; never on the ledger.
+   */
+  readonly price: number;
   /** The attendance policy its tickets carry. Times are Unix milliseconds. */
   readonly policy:
     | { readonly kind: "Single" }
@@ -253,8 +258,13 @@ export type ZoneOnSale =
  */
 export interface SaleInventory {
   readonly event: string;
-  /** Whether the event is on sale: `Active` on the ledger (`REQ-EV-8`). Nothing is offered otherwise. */
+  /**
+   * Whether the event is on sale: `Active` on the ledger (`REQ-EV-8`), with a sale
+   * asset chosen. Nothing is offered otherwise.
+   */
   readonly onSale: boolean;
+  /** What the event's prices are in: `COPM/2` or `DUSD/6`; `null` until the organiser chooses. */
+  readonly asset: SaleAsset | null;
   /**
    * How many more tickets of any class can be held: capacity less issued
    * tickets and outstanding holds (`INV-4`). `null` when unbounded.
