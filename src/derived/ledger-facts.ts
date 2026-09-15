@@ -1,9 +1,12 @@
+import { registrationAccount } from "@ticketto/profile-v0";
 import type {
   AccessPass,
   Command,
   EventId,
   Event as LedgerEvent,
   LogRecord,
+  Profile,
+  RegisterCredential,
   Result,
   Zone,
 } from "@ticketto/sdk";
@@ -58,12 +61,44 @@ async function exactlyOne(
   }
 }
 
+/**
+ * One accepted registration (`REQ-CP-6`). The account and credential id are the
+ * ones the profile derives from the registration bytes. A credential already
+ * registered to the account keeps its stored registration: the ledger accepts
+ * such a command and changes nothing.
+ */
+async function applyRegistration(
+  tx: DerivedTransaction,
+  profile: Pick<Profile, "registrationAccount">,
+  { sequence, record }: SequencedRecord,
+  command: RegisterCredential,
+): Promise<void> {
+  const named = profile.registrationAccount(command.registration);
+  if (!named.ok) {
+    throw new UnprojectableRecordError(
+      record,
+      `the registration does not decode: ${named.error.code}`,
+    );
+  }
+  if (named.value.account !== command.account) {
+    throw new UnprojectableRecordError(record, "the registration names another account");
+  }
+  await tx.query(
+    `INSERT INTO derived_credentials (account, credential, registration, sequence)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (account, credential) DO NOTHING`,
+    [named.value.account, named.value.credential, Buffer.from(command.registration), sequence],
+  );
+}
+
 async function applyCommand(
   tx: DerivedTransaction,
   ledger: LedgerPointQueries,
-  { sequence, record }: SequencedRecord,
+  profile: Pick<Profile, "registrationAccount">,
+  entry: SequencedRecord,
   command: Command,
 ): Promise<void> {
+  const { sequence, record } = entry;
   switch (command.kind) {
     case "createEvent": {
       // The owner is the account that signed the command. Owners never change,
@@ -188,7 +223,7 @@ async function applyCommand(
       return;
     }
     case "registerCredential":
-      // Credentials are not projected.
+      await applyRegistration(tx, profile, entry, command);
       return;
     default:
       throw new UnprojectableRecordError(
@@ -232,19 +267,24 @@ function zonesJson(zones: readonly Zone[]): string {
 }
 
 /**
- * The events, tickets, holdings and attendance projections (`F-025` plan §5.2).
+ * The events, tickets, holdings, attendance and credential projections
+ * (`F-025` plan §5.2, `T-025-09`).
  *
  * Each record's effect is derived from its signed input — only accepted inputs
  * reach the log, so nothing is re-judged here (`AD-25`) — plus a point query
- * where the input does not state a fact: an event's owner.
+ * where the input does not state a fact: an event's owner. A registration is
+ * decoded by the cryptographic profile, which defaults to `profile-v0`'s.
  */
-export function ledgerFactsProjection(ledger: LedgerPointQueries): Projection {
+export function ledgerFactsProjection(
+  ledger: LedgerPointQueries,
+  profile: Pick<Profile, "registrationAccount"> = { registrationAccount },
+): Projection {
   return {
     name: "ledger facts",
     async apply(tx, entry) {
       const { entry: input } = entry.record;
       if ("command" in input) {
-        await applyCommand(tx, ledger, entry, input.command);
+        await applyCommand(tx, ledger, profile, entry, input.command);
       } else if ("pass" in input) {
         await applyAttendance(tx, entry, input.pass);
       } else {
