@@ -7,7 +7,7 @@
  * `@kippu/api`: it may import nothing at runtime, and names no SDK type.
  */
 
-import type { Principal } from "../auth/ports.js";
+import type { OperatorPrincipal, Principal } from "../auth/ports.js";
 
 /** The request a call acts on behalf of. */
 export interface OperatorsRequest {
@@ -58,12 +58,56 @@ export interface RevokedSessions {
 }
 
 /**
+ * A grant to make (`F-024` plan §5.1): the operator may operate these gates of
+ * the event, inside the window. The organiser must own the event.
+ */
+export interface GrantInput {
+  readonly operator: string;
+  /** The `EventId`, 64 lower-case hex characters. */
+  readonly event: string;
+  /** The organiser's own gate labels, such as `North door`, matched exactly. 1 to 100, distinct. */
+  readonly gates: readonly string[];
+  /** Unix milliseconds: the grant is active from this instant… */
+  readonly from: number;
+  /** …until strictly before this one, which must be later than `from`. */
+  readonly until: number;
+}
+
+/** A grant, by id. */
+export interface GrantIdInput {
+  readonly grant: string;
+}
+
+/** Which of the organiser's grants to list; `null` filters nothing. */
+export interface ListGrantsInput {
+  readonly event: string | null;
+  readonly operator: string | null;
+}
+
+/** A grant, as the organiser and its operator see it. */
+export interface OperatorGrant {
+  readonly id: string;
+  readonly operator: string;
+  readonly event: string;
+  readonly gates: readonly string[];
+  /** Unix milliseconds, inclusive. */
+  readonly from: number;
+  /** Unix milliseconds, exclusive. */
+  readonly until: number;
+  /** ISO 8601. */
+  readonly createdAt: string;
+  /** ISO 8601 once revoked; a revoked grant authorises nothing. */
+  readonly revokedAt: string | null;
+}
+
+/**
  * Why an operator request was refused, in `error.data.reason`. A platform
  * reason, never a §10 code.
  *
  * - `unknown-operator` — no operator of the signed-in organiser has this id.
+ * - `unknown-grant` — no grant of the signed-in organiser has this id.
  */
-export type OperatorRefusal = "unknown-operator";
+export type OperatorRefusal = "unknown-operator" | "unknown-grant";
 
 /**
  * Operator accounts (`T-024-01`). Every method acts for one organiser, and
@@ -91,4 +135,26 @@ export interface Operators {
     request: OperatorsRequest,
     input: OperatorInput,
   ): Promise<RevokedSessions>;
+  /**
+   * Grants an operator of the organiser gates of an event the organiser owns,
+   * for a window (`T-024-02`). The event's owner is read from the ledger; nothing
+   * is written to it (`AC-E5.1`).
+   */
+  grant(organiserId: string, request: OperatorsRequest, input: GrantInput): Promise<OperatorGrant>;
+  /** The organiser's grants, oldest first. */
+  listGrants(organiserId: string, input: ListGrantsInput): Promise<readonly OperatorGrant[]>;
+  /**
+   * Revokes a grant: it authorises nothing from the next check on. Revoking a
+   * revoked grant changes nothing, and answers it as it is.
+   */
+  revokeGrant(
+    organiserId: string,
+    request: OperatorsRequest,
+    input: GrantIdInput,
+  ): Promise<OperatorGrant>;
+  /**
+   * The signed-in operator's grants that are not revoked and have not ended,
+   * soonest first: the events and gates Iriguchi offers them.
+   */
+  myGrants(operator: OperatorPrincipal): Promise<readonly OperatorGrant[]>;
 }
