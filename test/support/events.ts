@@ -144,9 +144,11 @@ export async function eventsHarness(options: EventsHarnessOptions = {}): Promise
     get: (_, name) =>
       name === "authenticate"
         ? async (token: string) => sessions.get(token) ?? null
-        : () => {
-            throw new Error("sign-in is not part of these tests");
-          },
+        : name === "authenticateRevokedOperator"
+          ? async () => null
+          : () => {
+              throw new Error("sign-in is not part of these tests");
+            },
   });
 
   const metadata =

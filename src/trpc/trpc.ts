@@ -3,6 +3,7 @@ import type {
   HolderPrincipal,
   OperatorPrincipal,
   OrganiserPrincipal,
+  RevokedOperatorSession,
   SessionInfo,
 } from "../auth/ports.js";
 import type { Context } from "./context.js";
@@ -22,10 +23,11 @@ export interface KippuErrorData {
 /**
  * Who may call a procedure. `public` procedures are open to the anonymous
  * principal (`REQ-MP-7`); every other procedure — including one that declares
- * nothing — refuses it.
+ * nothing — refuses it. `operator-report` procedures also admit an operator
+ * session revoked within the last 24 hours, and no other anonymous call.
  */
 export interface ProcedureMeta {
-  readonly access?: "public" | "signed-in" | undefined;
+  readonly access?: "public" | "signed-in" | "operator-report" | undefined;
 }
 
 /** What a client sees of any error Kippu did not mean to show it. */
@@ -65,7 +67,8 @@ export const createCallerFactory = t.createCallerFactory;
  * forgets to say is closed, not open.
  */
 const guarded = t.procedure.use(({ ctx, meta, next }) => {
-  if (ctx.principal.kind === "anonymous" && meta?.access !== "public") {
+  const reporting = meta?.access === "operator-report" && (ctx.revokedOperator ?? null) !== null;
+  if (ctx.principal.kind === "anonymous" && meta?.access !== "public" && !reporting) {
     throw new TRPCError({ code: "UNAUTHORIZED", message: "sign in first" });
   }
   return next();
@@ -108,3 +111,33 @@ export const holderProcedure = authenticatedProcedure.use(({ ctx, next }) => {
   }
   return next({ ctx: { ...ctx, principal: principal as HolderPrincipal } });
 });
+
+/**
+ * A procedure an operator may call in a live session, or in one revoked within
+ * the last 24 hours (`F-024` plan §5.4). `sessionRevokedAt` says which: `null` for
+ * a live session. Only `operators.reportAdmission` is built on it.
+ */
+export const reportingOperatorProcedure = guarded
+  .meta({ access: "operator-report" })
+  .use(({ ctx, next }) => {
+    if (ctx.session !== null) {
+      const { principal } = ctx.session;
+      if (principal.kind !== "operator") {
+        throw new TRPCError({ code: "FORBIDDEN", message: "only an operator may do this" });
+      }
+      return next({
+        ctx: { ...ctx, principal: principal as OperatorPrincipal, sessionRevokedAt: null },
+      });
+    }
+    const revoked = (ctx.revokedOperator ?? null) as RevokedOperatorSession | null;
+    if (revoked === null) {
+      throw new TRPCError({ code: "UNAUTHORIZED", message: "sign in first" });
+    }
+    return next({
+      ctx: {
+        ...ctx,
+        principal: revoked.principal,
+        sessionRevokedAt: Date.parse(revoked.revokedAt) as number | null,
+      },
+    });
+  });

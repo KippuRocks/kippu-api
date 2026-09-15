@@ -22,6 +22,7 @@ import {
   type IssuedSession,
   type OperatorSession,
   type OrganiserSession,
+  type RevokedOperatorSession,
   type SessionInfo,
   type SignInChallenge,
   type SignUpChallenge,
@@ -67,6 +68,12 @@ const HOUR_MS = 60 * 60 * 1000;
 export const ORGANISER_SESSION_MS = 12 * HOUR_MS;
 export const OPERATOR_SESSION_MS = 24 * HOUR_MS;
 export const HOLDER_SESSION_MS = 30 * 24 * HOUR_MS;
+
+/**
+ * How long after its revocation an operator session may still report admissions
+ * presented before it (`F-024` plan §5.4).
+ */
+export const REVOKED_OPERATOR_REPORTING_MS = 24 * HOUR_MS;
 
 /** How long a proof-of-control challenge may be answered. */
 export const HOLDER_CHALLENGE_MS = 5 * 60 * 1000;
@@ -543,6 +550,33 @@ export function createAuth({
             expiresAt,
           } satisfies SessionInfo;
       }
+    },
+
+    async authenticateRevokedOperator(token) {
+      const result = await store.query<{
+        id: string;
+        organiser_id: string;
+        operator_id: string;
+        revoked_at: Date;
+      }>(
+        `SELECT id, organiser_id, operator_id, revoked_at FROM sessions
+         WHERE token_hash = $1 AND principal_kind = 'operator'
+           AND revoked_at IS NOT NULL AND revoked_at > $2`,
+        [hashSecret(token), new Date(now().getTime() - REVOKED_OPERATOR_REPORTING_MS)],
+      );
+      const row = result.rows[0];
+      if (row === undefined) {
+        return null;
+      }
+      return {
+        principal: {
+          kind: "operator",
+          operatorId: row.operator_id,
+          organiserId: row.organiser_id,
+          sessionId: row.id,
+        },
+        revokedAt: row.revoked_at.toISOString(),
+      } satisfies RevokedOperatorSession;
     },
 
     async signOut(sessionId) {

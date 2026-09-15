@@ -111,6 +111,7 @@ export function operatorRefusal(error: unknown): OperatorRefusal | null {
     return reason === "unknown-operator" ||
       reason === "unknown-grant" ||
       reason === "not-granted" ||
+      reason === "grant-revoked" ||
       reason === "report-exists"
       ? reason
       : null;

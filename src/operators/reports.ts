@@ -40,6 +40,10 @@ export interface AdmissionReportPage {
  * Admission reports (`T-024-04`; `REQ-OP-3`): recorded from Iriguchi, and read by
  * `F-025`, which matches them against the ledger's outcomes to flag refused
  * provisional admissions. A report is evidence, never a ledger fact (`REQ-IX-1`).
+ *
+ * An admission presented before a revocation is still evidence (`F-024` plan
+ * §5.4): a revoked grant, or an operator session revoked within the last 24
+ * hours, still reports it; neither reports a pass presented afterwards.
  */
 export interface AdmissionReports {
   record(
@@ -50,6 +54,8 @@ export interface AdmissionReports {
     },
     request: OperatorsRequest,
     input: AdmissionReportInput,
+    /** Unix milliseconds of the session's revocation, or `null` for a live session. */
+    sessionRevokedAt?: number | null,
   ): Promise<AdmissionReport>;
   list(query?: AdmissionReportQuery): Promise<AdmissionReportPage>;
 }
@@ -130,18 +136,35 @@ export function createAdmissionReports({
   readonly now?: () => Date;
 }): AdmissionReports {
   return {
-    async record(operator, request, input) {
-      const granted = await store.query(
-        `SELECT 1 FROM operator_grants
-         WHERE operator_id = $1 AND organiser_id = $2 AND event = $3 AND $4 = ANY (gates)
-         LIMIT 1`,
+    async record(operator, request, input, sessionRevokedAt = null) {
+      // A revoked session reports only what was presented before its revocation.
+      if (sessionRevokedAt !== null && !(input.presentedAt < sessionRevokedAt)) {
+        throw new RefusedRequest(
+          "the session was revoked before the pass was presented",
+          "UNAUTHORIZED",
+        );
+      }
+      // Ended grants count; a revoked one only for a pass presented before its revocation.
+      const grants = await store.query<{ revoked_at: Date | null }>(
+        `SELECT revoked_at FROM operator_grants
+         WHERE operator_id = $1 AND organiser_id = $2 AND event = $3 AND $4 = ANY (gates)`,
         [operator.operatorId, operator.organiserId, input.event, input.gate],
       );
-      if (granted.rowCount === 0) {
+      if (grants.rowCount === 0) {
         throw new RefusedRequest(
           "the operator was never granted this gate of the event",
           "FORBIDDEN",
           refusal("not-granted"),
+        );
+      }
+      const covered = grants.rows.some(
+        (grant) => grant.revoked_at === null || input.presentedAt < grant.revoked_at.getTime(),
+      );
+      if (!covered) {
+        throw new RefusedRequest(
+          "the grant for this gate was revoked before the pass was presented",
+          "FORBIDDEN",
+          refusal("grant-revoked"),
         );
       }
       const { verdict } = input;

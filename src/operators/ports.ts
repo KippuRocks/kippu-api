@@ -187,12 +187,15 @@ export interface AdmissionReport extends AdmissionReportInput {
  * - `unknown-grant` — no grant of the signed-in organiser has this id.
  * - `not-granted` — an admission report for a gate of an event the operator was
  *   never granted (`FORBIDDEN`).
+ * - `grant-revoked` — an admission report presented after every grant for the gate
+ *   was revoked (`FORBIDDEN`).
  * - `report-exists` — another operator's report already has this report id (`CONFLICT`).
  */
 export type OperatorRefusal =
   | "unknown-operator"
   | "unknown-grant"
   | "not-granted"
+  | "grant-revoked"
   | "report-exists";
 
 /**
@@ -250,14 +253,20 @@ export interface Operators {
    */
   check(operator: OperatorPrincipal, input: CheckInput): Promise<OperatorAuthorisation>;
   /**
-   * Records the signed-in operator's report of a verdict (`T-024-04`), at a gate
-   * of an event they hold or held a grant for — revoked and ended grants included,
-   * since an admission's outcome can arrive after either. Sending the same report
+   * Records an operator's report of a verdict (`T-024-04`), at a gate of an event
+   * they hold or held a grant for. An ended grant still accepts reports; a revoked
+   * one, only for a pass presented before its revocation. Sending the same report
    * id again answers the report first recorded.
+   *
+   * `sessionRevokedAt` is `null` in a live session. In an operator session revoked
+   * within the last 24 hours (Unix milliseconds of the revocation), only a pass
+   * presented before the revocation is reported; any other is `UNAUTHORIZED`, as
+   * every other call from that session is (`F-024` plan §5.4).
    */
   reportAdmission(
     operator: OperatorPrincipal,
     request: OperatorsRequest,
     input: AdmissionReportInput,
+    sessionRevokedAt?: number | null,
   ): Promise<AdmissionReport>;
 }

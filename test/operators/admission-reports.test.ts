@@ -165,7 +165,7 @@ describeWithStore("admission reports", () => {
     });
   });
 
-  it("an operator reports only at gates they were granted, revoked or ended grants included", async () => {
+  it("an operator reports only at gates they were granted", async () => {
     const { organiser, event } = await venue();
     const other = await venue();
     const north = await gate(organiser, event);
@@ -176,13 +176,102 @@ describeWithStore("admission reports", () => {
         reason: "not-granted",
       });
     }
+  });
 
-    // An admission's outcome can arrive after its grant was revoked or ended.
-    await organiser.client.operators.grants.revoke.mutate({ grant: north.grant });
+  it("REQ-OP-3: an ended grant still accepts reports", async () => {
+    const { organiser, event } = await venue();
+    const north = await gate(organiser, event);
+
+    const presentedAt = harness.now().getTime() + HOUR;
     harness.advance(5 * HOUR);
     await expect(
-      north.device.operators.reportAdmission.mutate(admitted(event)),
+      north.device.operators.reportAdmission.mutate(admitted(event, { presentedAt })),
     ).resolves.toBeDefined();
+  });
+
+  it("REQ-OP-3: a revoked grant accepts reports of passes presented before its revocation, and no others", async () => {
+    const { organiser, event } = await venue();
+    const north = await gate(organiser, event);
+    const before = harness.now().getTime();
+    harness.advance(1_000);
+    await organiser.client.operators.grants.revoke.mutate({ grant: north.grant });
+    const revokedAt = harness.now().getTime();
+    harness.advance(HOUR);
+
+    await expect(
+      north.device.operators.reportAdmission.mutate(admitted(event, { presentedAt: before })),
+    ).resolves.toBeDefined();
+    for (const presentedAt of [revokedAt, revokedAt + 1]) {
+      expect(
+        await refused(() =>
+          north.device.operators.reportAdmission.mutate(admitted(event, { presentedAt })),
+        ),
+      ).toEqual({ code: "FORBIDDEN", reason: "grant-revoked" });
+    }
+
+    // A live grant for the gate covers what the revoked one no longer does.
+    const from = harness.now().getTime();
+    await organiser.client.operators.grants.create.mutate({
+      operator: north.operator,
+      event,
+      gates: ["North door"],
+      from,
+      until: from + HOUR,
+    });
+    await expect(
+      north.device.operators.reportAdmission.mutate(admitted(event, { presentedAt: from })),
+    ).resolves.toBeDefined();
+  });
+
+  it("REQ-OP-3: a revoked session reports admissions presented before its revocation, for 24 hours, and does nothing else", async () => {
+    const { organiser, event } = await venue();
+    const north = await gate(organiser, event);
+    const before = harness.now().getTime();
+    harness.advance(1_000);
+    await organiser.client.operators.revokeSessions.mutate({ operator: north.operator });
+    const revokedAt = harness.now().getTime();
+    harness.advance(HOUR);
+
+    const report = admitted(event, { presentedAt: before });
+    await expect(north.device.operators.reportAdmission.mutate(report)).resolves.toMatchObject({
+      reportId: report.reportId,
+      operator: north.operator,
+    });
+    const [stored] = (await reports.list({ passId: report.passId })).reports;
+    expect(stored).toMatchObject({ operator: north.operator, organiserId: expect.any(String) });
+
+    for (const presentedAt of [revokedAt, revokedAt + 1]) {
+      expect(
+        await refused(() =>
+          north.device.operators.reportAdmission.mutate(admitted(event, { presentedAt })),
+        ),
+      ).toMatchObject({ code: "UNAUTHORIZED" });
+    }
+    // Everything else from the revoked session stays refused.
+    for (const call of [
+      () => north.device.operators.check.query({ event, gate: "North door" }),
+      () => north.device.operators.grants.mine.query(),
+      () => north.device.auth.session.current.query(),
+    ]) {
+      expect(await refused(call)).toMatchObject({ code: "UNAUTHORIZED" });
+    }
+
+    // 24 hours after the revocation, nothing at all.
+    harness.advance(revokedAt + 24 * HOUR - harness.now().getTime());
+    expect(
+      await refused(() =>
+        north.device.operators.reportAdmission.mutate(admitted(event, { presentedAt: before })),
+      ),
+    ).toMatchObject({ code: "UNAUTHORIZED" });
+  });
+
+  it("a report with no session, or an unknown token, is refused", async () => {
+    const { event } = await venue();
+    for (const client of [harness.client(), harness.client("x".repeat(43))]) {
+      expect(
+        await refused(() => client.operators.reportAdmission.mutate(admitted(event))),
+      ).toMatchObject({ code: "UNAUTHORIZED" });
+    }
   });
 
   it("a report names its outcome with a §10 code, and only an operator sends one", async () => {

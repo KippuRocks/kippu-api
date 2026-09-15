@@ -124,6 +124,17 @@ export interface OperatorSession {
   readonly operator: Operator;
 }
 
+/**
+ * An operator session revoked — by its organiser, or by signing out — within the
+ * last 24 hours. It may still report admissions presented before `revokedAt`
+ * (`REQ-OP-3`; `F-024` plan §5.4), and nothing else.
+ */
+export interface RevokedOperatorSession {
+  readonly principal: OperatorPrincipal;
+  /** ISO 8601. */
+  readonly revokedAt: string;
+}
+
 /** What a principal learns about its own session. */
 export interface SessionInfo {
   readonly principal: SessionPrincipal;
@@ -192,6 +203,11 @@ export interface Auth {
   completeHolderLink(challengeId: string, authorisation: string): Promise<HolderSession>;
   /** The live session a bearer token names, or `null`. */
   authenticate(token: string): Promise<SessionInfo | null>;
+  /**
+   * The operator session a bearer token names, when it was revoked within the last
+   * 24 hours; `null` otherwise. Only `operators.reportAdmission` accepts one.
+   */
+  authenticateRevokedOperator(token: string): Promise<RevokedOperatorSession | null>;
   signOut(sessionId: string): Promise<void>;
 }
 

@@ -3,7 +3,12 @@ import { z } from "zod";
 import type { OrganiserPrincipal } from "../auth/ports.js";
 import { RefusedRequest, SpecCodeError } from "../authority/errors.js";
 import { isSpecErrorCode, RefusalReasonCause, toTRPCError } from "../trpc/errors.js";
-import { operatorProcedure, organiserProcedure, router } from "../trpc/trpc.js";
+import {
+  operatorProcedure,
+  organiserProcedure,
+  reportingOperatorProcedure,
+  router,
+} from "../trpc/trpc.js";
 import type {
   AdmissionReport,
   AdmissionReportInput,
@@ -205,9 +210,14 @@ export const operatorsRouter = router({
    * Records the signed-in operator's report of a verdict at a gate they were
    * granted (`REQ-OP-3`): for an admission, how its submission ended. Sending the
    * same `reportId` again answers the report first recorded. A gate never granted
-   * is `FORBIDDEN`, reason `not-granted`.
+   * is `FORBIDDEN`, reason `not-granted`; one whose grants were all revoked before
+   * the pass was presented, reason `grant-revoked`.
+   *
+   * The one call an operator session revoked within the last 24 hours may still
+   * make, for a pass presented before the revocation (`F-024` plan §5.4); any other
+   * pass is `UNAUTHORIZED`, as is every other call from that session.
    */
-  reportAdmission: operatorProcedure
+  reportAdmission: reportingOperatorProcedure
     .input(parser<AdmissionReportInput>(admissionReportInput))
     .mutation(
       ({ ctx, input }): Promise<AdmissionReport> =>
@@ -216,6 +226,7 @@ export const operatorsRouter = router({
             ctx.principal,
             { requestId: ctx.requestId, principal: ctx.principal },
             input,
+            ctx.sessionRevokedAt,
           ),
         ),
     ),
