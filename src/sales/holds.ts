@@ -11,6 +11,7 @@ import {
   quotaHasRoom,
   saleTerms,
 } from "./allocation.js";
+import { recordCheckoutStep } from "./audit.js";
 import { eventOnSale } from "./on-sale.js";
 import { CheckoutError, type HoldRefusal, type SalesRequest } from "./ports.js";
 
@@ -126,10 +127,15 @@ export function createHolds(options: HoldsOptions): Holds {
         if (refusal === null && !quotaHasRoom(counts)) {
           refusal = "class-sold-out";
         }
+        const cause = { requestId: request.requestId, actor: request.principal };
         if (refusal !== null) {
+          await recordCheckoutStep(client, target.checkoutId, "hold-refused", cause, at, {
+            reason: refusal,
+          });
           await client.query("COMMIT");
           return refusal;
         }
+        const holdId = randomUUID();
 
         await client.query(
           `INSERT INTO holds
@@ -137,7 +143,7 @@ export function createHolds(options: HoldsOptions): Holds {
               created_at, asset, price)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
           [
-            randomUUID(),
+            holdId,
             target.checkoutId,
             target.event,
             target.zone,
@@ -150,6 +156,11 @@ export function createHolds(options: HoldsOptions): Holds {
             terms.price,
           ],
         );
+        await recordCheckoutStep(client, target.checkoutId, "held", cause, at, {
+          hold: holdId,
+          asset: terms.asset,
+          price: terms.price,
+        });
         await client.query("COMMIT");
         return null;
       } catch (error) {

@@ -6,6 +6,7 @@ import type { PlacementInput } from "../events/ports.js";
 import type { Zones } from "../events/zones.js";
 import type { KippuTicketto } from "../ledger/ticketto.js";
 import type { Store } from "../store/store.js";
+import { inTransaction, recordCheckoutStep } from "./audit.js";
 import type { Holds } from "./holds.js";
 import { eventOnSale } from "./on-sale.js";
 import {
@@ -274,29 +275,40 @@ export function createCheckouts(
       // A buyer with their own holder session needs no handoff, nor pairing.
       const holder = principal.kind === "holder" ? principal : null;
       const at = now();
-      await store.query(
-        `INSERT INTO checkout_sessions
+      const id = randomUUID();
+      const cause = { requestId: request.requestId, actor: principal };
+      await inTransaction(store, async (db) => {
+        await db.query(
+          `INSERT INTO checkout_sessions
            (id, token_hash, handoff_token_hash, event, zone, class_id, position, holder_account,
             created_request_id, created_principal_kind, created_at, linked_session_id,
             linked_request_id, linked_at, link_confirmed_at, link_confirmed_request_id)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $14, $13)`,
-        [
-          randomUUID(),
-          hashSecret(token),
-          hashSecret(handoffTokenOf(token, 0)),
-          input.event,
-          input.zone,
-          input.class,
-          position,
-          holder?.account ?? null,
-          request.requestId,
-          principal.kind,
-          at,
-          holder?.sessionId ?? null,
-          holder === null ? null : request.requestId,
-          holder === null ? null : at,
-        ],
-      );
+          [
+            id,
+            hashSecret(token),
+            hashSecret(handoffTokenOf(token, 0)),
+            input.event,
+            input.zone,
+            input.class,
+            position,
+            holder?.account ?? null,
+            request.requestId,
+            principal.kind,
+            at,
+            holder?.sessionId ?? null,
+            holder === null ? null : request.requestId,
+            holder === null ? null : at,
+          ],
+        );
+        const detail = { event: input.event, zone: input.zone, class: input.class, position };
+        await recordCheckoutStep(db, id, "begun", cause, at, detail);
+        if (holder !== null) {
+          // The buyer's own holder session: linked and confirmed with the checkout itself.
+          await recordCheckoutStep(db, id, "linked", cause, at);
+          await recordCheckoutStep(db, id, "link-confirmed", cause, at);
+        }
+      });
       return { token, checkout: checkoutOf(await find(token), token) };
     },
 
@@ -310,19 +322,34 @@ export function createCheckouts(
         throw new RefusedRequest("only a holder's session links an account to a checkout");
       }
       const found = await findBy("handoff_token_hash", handoffToken);
-      await store.query(
-        `UPDATE checkout_sessions
-         SET holder_account = $2, linked_session_id = $3, linked_request_id = $4, linked_at = $5
-         WHERE id = $1 AND handoff_generation = $6 AND holder_account IS NULL`,
-        [
-          found.id,
-          principal.account,
-          principal.sessionId,
-          request.requestId,
-          now(),
-          found.handoff_generation,
-        ],
-      );
+      await inTransaction(store, async (db) => {
+        const at = now();
+        const linked = await db.query(
+          `UPDATE checkout_sessions
+           SET holder_account = $2, linked_session_id = $3, linked_request_id = $4, linked_at = $5
+           WHERE id = $1 AND handoff_generation = $6 AND holder_account IS NULL`,
+          [
+            found.id,
+            principal.account,
+            principal.sessionId,
+            request.requestId,
+            at,
+            found.handoff_generation,
+          ],
+        );
+        if (linked.rowCount === 1) {
+          await recordCheckoutStep(
+            db,
+            found.id,
+            "linked",
+            {
+              requestId: request.requestId,
+              actor: principal,
+            },
+            at,
+          );
+        }
+      });
       const row = await findBy("handoff_token_hash", handoffToken);
       if (row.holder_account !== principal.account) {
         throw new CheckoutError(
@@ -349,28 +376,50 @@ export function createCheckouts(
         throw new CheckoutError("pairing-code-mismatch", "the pairing code is not the checkout's");
       }
       if (row.link_confirmed_at === null) {
-        await store.query(
-          `UPDATE checkout_sessions SET link_confirmed_at = $2, link_confirmed_request_id = $3
-           WHERE id = $1 AND holder_account = $4 AND link_confirmed_at IS NULL`,
-          [row.id, now(), request.requestId, row.holder_account],
-        );
+        await inTransaction(store, async (db) => {
+          const at = now();
+          const confirmed = await db.query(
+            `UPDATE checkout_sessions SET link_confirmed_at = $2, link_confirmed_request_id = $3
+             WHERE id = $1 AND holder_account = $4 AND link_confirmed_at IS NULL`,
+            [row.id, at, request.requestId, row.holder_account],
+          );
+          if (confirmed.rowCount === 1) {
+            const cause = { requestId: request.requestId, actor: request.principal };
+            await recordCheckoutStep(db, row.id, "link-confirmed", cause, at, {
+              holder: row.holder_account,
+            });
+          }
+        });
       }
       return checkoutOf(await find(token), token);
     },
 
-    async discardLink(_request, token) {
+    async discardLink(request, token) {
       const row = await find(token);
       if (row.holder_account === null || row.link_confirmed_at !== null) {
         throw new CheckoutError("not-pairing", "the checkout has no unconfirmed link to discard");
       }
       const generation = row.handoff_generation + 1;
-      await store.query(
-        `UPDATE checkout_sessions
-         SET holder_account = NULL, linked_session_id = NULL, linked_request_id = NULL,
-             linked_at = NULL, handoff_generation = $2, handoff_token_hash = $3
-         WHERE id = $1 AND handoff_generation = $4 AND link_confirmed_at IS NULL`,
-        [row.id, generation, hashSecret(handoffTokenOf(token, generation)), row.handoff_generation],
-      );
+      await inTransaction(store, async (db) => {
+        const discarded = await db.query(
+          `UPDATE checkout_sessions
+           SET holder_account = NULL, linked_session_id = NULL, linked_request_id = NULL,
+               linked_at = NULL, handoff_generation = $2, handoff_token_hash = $3
+           WHERE id = $1 AND handoff_generation = $4 AND link_confirmed_at IS NULL`,
+          [
+            row.id,
+            generation,
+            hashSecret(handoffTokenOf(token, generation)),
+            row.handoff_generation,
+          ],
+        );
+        if (discarded.rowCount === 1) {
+          const cause = { requestId: request.requestId, actor: request.principal };
+          await recordCheckoutStep(db, row.id, "link-discarded", cause, now(), {
+            holder: row.holder_account,
+          });
+        }
+      });
       return checkoutOf(await find(token), token);
     },
 
