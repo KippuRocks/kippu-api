@@ -130,6 +130,77 @@ export interface WaitedFor {
   readonly freshness: ReadFreshness;
 }
 
+/**
+ * Why a provisional admission was flagged (`REQ-OP-3`, `F-025` plan §5.5).
+ *
+ * - `same-pass-at-two-gates` — refused as `ERR-PassReplayed`, and another report
+ *   admitted the same pass.
+ * - `transfer-before-recording` — refused as `ERR-InvalidPass`, with a transfer
+ *   of the ticket recorded between the gate's verdict and the report of the refusal.
+ * - `gate-clock-outside-tolerance` — the gate's clock was more than 10 s from
+ *   Kippu's: for a refusal, one as `ERR-PassExpired`; or on any report at all.
+ * - `unexplained` — the ledger refused the admission for none of the causes above.
+ */
+export type AdmissionFlagCause =
+  | "same-pass-at-two-gates"
+  | "transfer-before-recording"
+  | "gate-clock-outside-tolerance"
+  | "unexplained";
+
+/** How a report for the same pass ended, as its gate reported it. */
+export interface RelatedReport {
+  readonly reportId: string;
+  readonly gate: string;
+  readonly operator: string;
+  readonly outcome: "settled" | "rejected" | "failed" | "refused-at-gate";
+  /** Unix ms, Kippu's clock. */
+  readonly receivedAt: number;
+}
+
+/** A transfer of the flagged ticket, from the derived copy. */
+export interface FlagTransfer {
+  readonly from: string;
+  readonly to: string;
+  /** Unix ms, the ledger's clock. */
+  readonly recordedAt: number;
+  readonly sequence: number;
+}
+
+/** A flagged admission report, for the organiser (`REQ-OP-3`). */
+export interface AdmissionFlag {
+  readonly reportId: string;
+  readonly gate: string;
+  readonly operator: string;
+  readonly ticket: string;
+  readonly passId: string;
+  /** The ledger's refusal of the provisional admission; `null` when only the gate's clock is flagged. */
+  readonly refusal: { readonly errorCode: string } | null;
+  readonly cause: AdmissionFlagCause;
+  /** Unix ms: when the pass was presented, as the gate submitted it. */
+  readonly presentedAt: number;
+  /** Unix ms: the gate device's own clock when it reported. */
+  readonly deviceClock: number;
+  /** Unix ms: Kippu's clock when the report arrived. */
+  readonly receivedAt: number;
+  /** `deviceClock − receivedAt`, in ms. */
+  readonly clockDrift: number;
+  /** Every other report for the same pass, in the order received. */
+  readonly otherReports: readonly RelatedReport[];
+  /** Transfers of the ticket recorded between the verdict and the report. */
+  readonly transfers: readonly FlagTransfer[];
+}
+
+export interface AdmissionFlagsRead {
+  /** In the order the flagged reports were received. */
+  readonly flags: readonly AdmissionFlag[];
+  /**
+   * How far the copy had read the log. A transfer the copy has not yet read
+   * cannot explain a refusal, so a flag may move from `unexplained` to
+   * `transfer-before-recording` once the copy catches up.
+   */
+  readonly freshness: ReadFreshness;
+}
+
 /** What the read routers reach. */
 export interface Reads {
   /** An event, by id. Public: browsing needs no account (`REQ-MP-7`). */
@@ -143,6 +214,13 @@ export interface Reads {
   eventsOnSale(limit: number, page: string | null): Promise<EventsOnSalePage>;
   /** The events the organiser's ledger account owns, most recently created first. */
   organiserEvents(organiserId: string): Promise<EventsRead>;
+  /**
+   * The organiser's flagged admissions for an event: every provisional admission
+   * the ledger refused, with its cause, and every report from a gate whose clock
+   * was outside tolerance (`REQ-OP-3`). Only reports from the organiser's own
+   * operators are read.
+   */
+  admissionFlags(organiserId: string, event: string): Promise<AdmissionFlagsRead>;
   /** The tickets a holder's account holds, by event (`US-D1`, `US-E1`). */
   holdings(account: string): Promise<HoldingsRead>;
   /** Waits, up to `timeout` ms, until the copy reflects a write's receipt cursor (`F-025` plan §5.3). */

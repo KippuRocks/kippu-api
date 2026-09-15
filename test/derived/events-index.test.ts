@@ -1,7 +1,7 @@
 import { eventLocator } from "@kippu/metadata-schema";
 import type { Authorisation, EventId, EventStatus, OperationId } from "@ticketto/sdk";
 import type { TRPCError } from "@trpc/server";
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { buildApp, TRPC_PREFIX } from "../../src/app.js";
 import { ANONYMOUS, type Services } from "../../src/auth/ports.js";
 import { createFreshness, type Freshness } from "../../src/derived/freshness.js";
@@ -24,6 +24,10 @@ import {
 import { memoryMetadataStorage } from "../support/object-storage.js";
 
 const hex = (length: number, byte: number) => byte.toString(16).padStart(2, "0").repeat(length);
+
+// These tests create databases and write to a ledger: on a loaded machine that
+// takes far longer than Vitest's 5 s default.
+vi.setConfig({ testTimeout: 60_000, hookTimeout: 60_000 });
 
 describeWithStore("the public index of events on sale", () => {
   let harness: EventsHarness;

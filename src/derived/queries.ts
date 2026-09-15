@@ -87,8 +87,36 @@ export interface DerivedQueries {
     account: AccountId,
     credential: CredentialId,
   ): Promise<DerivedRead<Projected<Registration> | null>>;
+  /**
+   * The transfers of `ticket` the ledger recorded at or after `from` and at or
+   * before `until` (ledger clock, ms), in log order.
+   */
+  transfers(
+    ticket: TicketId,
+    from: Timestamp,
+    until: Timestamp,
+  ): Promise<DerivedRead<readonly Projected<Transfer>[]>>;
   /** Every credential registered to `account`, in registration order. */
   credentials(account: AccountId): Promise<DerivedRead<readonly Projected<RegisteredCredential>[]>>;
+}
+
+/** A transfer the ledger recorded. */
+export interface Transfer {
+  readonly event: EventId;
+  readonly ticket: TicketId;
+  readonly from: AccountId;
+  readonly to: AccountId;
+  readonly recordedAt: Timestamp;
+}
+
+interface TransferRow {
+  id: string;
+  event_id: string;
+  ticket_id: string;
+  from_holder: string;
+  to_holder: string;
+  recorded_at: string;
+  sequence: string;
 }
 
 /** A credential registered to an account. */
@@ -316,6 +344,33 @@ export function createDerivedQueries(store: Store): DerivedQueries {
           event: eventOf(row),
           position: { created: int(row.created), id: row.id as EventId },
         })),
+        freshness,
+      };
+    },
+    async transfers(ticket, from, until) {
+      const { rows, freshness } = await read<TransferRow>(
+        store,
+        `SELECT head.*, t.sequence::text AS id, t.event_id, t.ticket_id, t.from_holder, t.to_holder,
+           t.recorded_at, t.sequence
+         FROM head
+         LEFT JOIN derived_transfers t
+           ON t.ticket_id = $1 AND t.recorded_at BETWEEN $2 AND $3
+         ORDER BY t.sequence`,
+        [ticket, from, until],
+      );
+      return {
+        result: rows.map((row) =>
+          projected(
+            {
+              event: row.event_id as EventId,
+              ticket: row.ticket_id as TicketId,
+              from: row.from_holder as AccountId,
+              to: row.to_holder as AccountId,
+              recordedAt: int(row.recorded_at),
+            },
+            row.sequence,
+          ),
+        ),
         freshness,
       };
     },

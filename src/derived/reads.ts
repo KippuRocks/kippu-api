@@ -3,7 +3,9 @@ import type { AccountId, Cursor, EventId, Ticket } from "@ticketto/sdk";
 import type { OrganiserAuthority } from "../authority/authority.js";
 import { RefusedRequest } from "../authority/errors.js";
 import type { MetadataStorage } from "../metadata/storage.js";
+import { type AdmissionReports, createAdmissionReports } from "../operators/reports.js";
 import type { Store } from "../store/store.js";
+import { matchAdmissionFlags } from "./admission-flags.js";
 import type { CopyFreshness, Freshness } from "./freshness.js";
 import type {
   EventView,
@@ -49,6 +51,8 @@ export interface ReadsOptions {
   /** The public origin Kippu serves metadata from (`AD-22`); defaults to `https://meta.kippu.rocks`. */
   readonly publicUrl?: string;
   readonly queries?: DerivedQueries;
+  /** Admission reports from gates (`F-024`), for flags; defaults to the store's. */
+  readonly admissionReports?: Pick<AdmissionReports, "list">;
 }
 
 type Document = { readonly [field: string]: ReadJson };
@@ -83,6 +87,7 @@ export function createReads(options: ReadsOptions): Reads {
   const { store, freshness, storage, authority } = options;
   const origin = new URL(options.publicUrl ?? METADATA_ORIGIN).origin;
   const queries = options.queries ?? createDerivedQueries(store);
+  const admissionReports = options.admissionReports ?? createAdmissionReports({ store });
 
   const document = async (locator: string | null): Promise<Document | null> => {
     if (locator === null) return null;
@@ -168,6 +173,17 @@ export function createReads(options: ReadsOptions): Reads {
         events: await Promise.all(read.result.map(eventView)),
         freshness: freshnessOf(read.freshness),
       };
+    },
+
+    async admissionFlags(organiserId, event) {
+      const matched = await matchAdmissionFlags(
+        admissionReports,
+        queries,
+        () => freshness.current(),
+        organiserId,
+        event,
+      );
+      return { flags: matched.flags, freshness: freshnessOf(matched.freshness) };
     },
 
     async holdings(account) {

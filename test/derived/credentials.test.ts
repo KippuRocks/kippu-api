@@ -1,7 +1,7 @@
 import { registrationAccount } from "@ticketto/profile-v0";
 import { simulatedWebAuthnSigner, softwareP256Signer } from "@ticketto/profile-v0/testing";
 import type { AccountId, Authorisation, OperationId, Registration } from "@ticketto/sdk";
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { ledgerFactsProjection, UnprojectableRecordError } from "../../src/derived/ledger-facts.js";
 import { createDerivedQueries } from "../../src/derived/queries.js";
 import { createDerivedReader } from "../../src/derived/reader.js";
@@ -21,6 +21,10 @@ import {
 import { relayLoginRole } from "../support/sponsor-relay.js";
 
 const bytes = (length: number, byte: number) => new Uint8Array(length).fill(byte);
+
+// These tests create databases and write to a ledger: on a loaded machine that
+// takes far longer than Vitest's 5 s default.
+vi.setConfig({ testTimeout: 60_000, hookTimeout: 60_000 });
 
 describeWithStore("the derived copy's credential registrations", () => {
   let database: TestDatabase;

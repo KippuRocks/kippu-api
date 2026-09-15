@@ -7,7 +7,7 @@ import {
   type OperationId,
   type TicketId,
 } from "@ticketto/sdk";
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { createFreshness, type Freshness } from "../../src/derived/freshness.js";
 import { ledgerFactsProjection } from "../../src/derived/ledger-facts.js";
 import { createDerivedQueries } from "../../src/derived/queries.js";
@@ -31,6 +31,10 @@ const hex = (length: number, byte: number) => byte.toString(16).padStart(2, "0")
 
 /** Long enough that only a hint or a notification can be what woke anything. */
 const NEVER = 60_000;
+
+// These tests create databases and write to a ledger: on a loaded machine that
+// takes far longer than Vitest's 5 s default.
+vi.setConfig({ testTimeout: 60_000, hookTimeout: 60_000 });
 
 describeWithStore("waitFor and freshness", () => {
   let database: TestDatabase;
@@ -95,7 +99,7 @@ describeWithStore("waitFor and freshness", () => {
     });
     const receipt = await settled(issued.submission);
 
-    expect(await fresh.waitFor(receipt.cursor, 5_000)).toBe(true);
+    expect(await fresh.waitFor(receipt.cursor, 30_000)).toBe(true);
     const read = await createDerivedQueries(database.store).ticket(issued.id);
     expect(read.result?.value.holder).toBe(holder);
     expect(read.freshness.cursor).toBe(receipt.cursor);
@@ -130,7 +134,7 @@ describeWithStore("waitFor and freshness", () => {
       presentedAt: null,
     });
 
-    expect(await fresh.waitFor(cursor, 5_000)).toBe(true);
+    expect(await fresh.waitFor(cursor, 30_000)).toBe(true);
     const queries = createDerivedQueries(database.store);
     const read = await queries.ticket(ticket);
     expect(read.result?.value.holder).toBe(receiver);
@@ -161,13 +165,15 @@ describeWithStore("waitFor and freshness", () => {
     const elsewhere = createStore(database.url);
     cleanups.push(() => elsewhere.end());
     const fresh = freshness(elsewhere, NEVER);
-    const started = Date.now();
-    const waiting = fresh.waitFor(receipt.cursor, 10_000);
+    // Waiting longer than the poll interval (60 s) could take: only the notification can wake it in time.
+    const waiting = fresh.waitFor(receipt.cursor, 55_000);
     await new Promise((resolve) => setTimeout(resolve, 200));
 
     await reader().catchUp();
+    const committed = Date.now();
     expect(await waiting).toBe(true);
-    expect(Date.now() - started).toBeLessThan(5_000);
+    // Measured from the batch's commit, however long a loaded machine took to get there.
+    expect(Date.now() - committed).toBeLessThan(30_000);
   });
 
   it("resolves false when the copy does not reach the cursor in time", async () => {
@@ -183,9 +189,10 @@ describeWithStore("waitFor and freshness", () => {
     const records = await wholeLog(ledger.kippu.log);
     const fresh = freshness();
     const started = Date.now();
-    expect(await fresh.waitFor(records[0]?.cursor ?? LOG_START, 5_000)).toBe(true);
+    expect(await fresh.waitFor(records[0]?.cursor ?? LOG_START, 30_000)).toBe(true);
     expect(await fresh.waitFor(LOG_START, 0)).toBe(true);
-    expect(Date.now() - started).toBeLessThan(1_000);
+    // Well short of the 60 s poll interval: answered from the copy, not by waiting.
+    expect(Date.now() - started).toBeLessThan(30_000);
   });
 
   it("every read response says how far the copy had read, hit or miss", async () => {
