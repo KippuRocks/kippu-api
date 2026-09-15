@@ -152,9 +152,16 @@ export interface CheckoutRefund {
    * `issuance-rejected`: the ticket was not issued; `place-gone`: the payment
    * landed after the hold ended and the place was taken; `amount-mismatch`: the
    * provider took another amount than the price; `event-closed`: the hold was
-   * released because the event is being sealed or cancelled (`REQ-HD-4`).
+   * released because the event is being sealed or cancelled (`REQ-HD-4`);
+   * `event-cancelled`: the ticket's event was cancelled (`AC-A5.5`), and the refund
+   * is owed to its original purchaser.
    */
-  readonly reason: "issuance-rejected" | "place-gone" | "amount-mismatch" | "event-closed";
+  readonly reason:
+    | "issuance-rejected"
+    | "place-gone"
+    | "amount-mismatch"
+    | "event-closed"
+    | "event-cancelled";
 }
 
 /** Paying for a checkout's hold: the checkout page's token, and Ichiba's return URLs. */

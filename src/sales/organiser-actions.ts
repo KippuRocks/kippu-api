@@ -4,6 +4,7 @@ import type { KippuTicketto } from "../ledger/ticketto.js";
 import type { Store } from "../store/store.js";
 import { allocatedCount, allocationCounts } from "./allocation.js";
 import type { CheckoutCause } from "./audit.js";
+import { type CancellationRefunds, createCancellationRefunds } from "./cancellation-refunds.js";
 import type { Payments, ReleasedSales } from "./payment.js";
 
 /**
@@ -28,11 +29,17 @@ export interface OrganiserSaleActions {
   releaseAll(event: string, cause: CheckoutCause): Promise<ReleasedSales>;
   /** When the seal or cancellation was refused: reopens the event's sales. */
   reopenSales(event: string, cause: CheckoutCause): Promise<boolean>;
+  /**
+   * Once the event is `Cancelled` on the ledger: one refund entitlement per
+   * purchased ticket, at most once, owed to its original purchaser, with the
+   * holder at cancellation recorded (`T-022-07`, `AC-A5.5`). Safe to run again.
+   */
+  recordCancellationRefunds(event: string, cause: CheckoutCause): Promise<CancellationRefunds>;
 }
 
 export interface OrganiserSaleActionsOptions {
   readonly store: Store;
-  readonly ledger: Pick<KippuTicketto, "getEvent">;
+  readonly ledger: Pick<KippuTicketto, "getEvent" | "getTicket" | "getCancellationHolder">;
   readonly payments: Pick<Payments, "releaseAll" | "reopenSales">;
   readonly now?: () => Date;
 }
@@ -56,5 +63,6 @@ export function createOrganiserSaleActions(
     },
     releaseAll: (event, cause) => payments.releaseAll(event, cause),
     reopenSales: (event, cause) => payments.reopenSales(event, cause),
+    recordCancellationRefunds: createCancellationRefunds(options),
   };
 }
