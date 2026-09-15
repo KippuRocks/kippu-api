@@ -13,6 +13,7 @@ import {
   type CheckoutPayment,
   type CheckoutTokenInput,
   type ConfirmLinkInput,
+  type GetCheckoutInput,
   type HandoffLink,
   type HandoffTokenInput,
   type HoldOutcome,
@@ -99,6 +100,10 @@ const token = z.string().regex(/^[A-Za-z0-9_-]{43}$/, "expected a checkout token
 
 const tokenInput = z.object({ token }).strict();
 
+const getInput = z
+  .object({ token, waitForTicketMs: z.number().int().min(0).max(10_000).optional() })
+  .strict();
+
 const handoffTokenInput = z.object({ handoffToken: token }).strict();
 
 /** A return URL Ichiba passes: http(s), absolute. */
@@ -144,9 +149,15 @@ const checkoutRouter = router({
     ),
   /** The checkout a token names; `NOT_FOUND` for none. */
   get: publicProcedure
-    .input(parser<CheckoutTokenInput>(tokenInput))
+    .input(parser<GetCheckoutInput>(getInput))
     .query(
-      ({ ctx, input }): Promise<Checkout> => mapped(() => ctx.services.sales.checkout(input.token)),
+      ({ ctx, input }): Promise<Checkout> =>
+        mapped(() =>
+          ctx.services.sales.checkout(
+            input.token,
+            input.waitForTicketMs === undefined ? {} : { waitForTicketMs: input.waitForTicketMs },
+          ),
+        ),
     ),
   /**
    * Links the signed-in holder's account to the checkout a handoff token hands

@@ -259,6 +259,7 @@ Checkout takes payment through a provider's **hosted checkout** (`F-022` plan §
 
 All three or none. With none, the test provider is used in `development` and `test`; `staging` and `production` refuse to take payments without Bloque. Setting `KIPPU_TEST_BLOQUE_PAYMENTS_SECRET_KEY` and `KIPPU_TEST_BLOQUE_PAYMENTS_WEBHOOK_SECRET` (sandbox) runs the adapter's sandbox test, which creates, retrieves and cancels one checkout; it is skipped otherwise.
 
+- **Confirmation freshness** (plan §5.1, ruled in `M2`): `sales.checkout.get` reports `ticketVisible` — true once Kippu's copy has passed the sale's issuance receipt (`NFR-11`) — read with the checkout page's token; `waitForTicketMs` (up to 10 s) waits for it once the sale is issued. Ichiba says the ticket is in Saifu only then. No public `waitFor` is exposed.
 - **Audit** (`T-022-09`; `REQ-MP-8`, `NFR-7`): every step of a checkout — begun, linked, link confirmed or discarded, held or refused, payment started, cancelled, payment verified, issued, issuance rejected or failed, refund entitled — is a `checkout_audit` row naming the request and who made it (the buyer's page, a holder session, the payment provider, the sweep). A sale's issuance is joined to its `audit_log` row by operation id; `primary_checkout_audit` is exactly the audit log's primary-checkout issuances. `primarySaleTrail` (`src/sales/audit.ts`) reads a sale end to end.
 
 #### Driving the test payment provider over HTTP

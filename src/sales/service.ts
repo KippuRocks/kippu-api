@@ -1,5 +1,6 @@
 import type { OrganiserAuthority } from "../authority/authority.js";
 import type { Classes } from "../classes/classes.js";
+import type { Freshness } from "../derived/freshness.js";
 import type { SeatAllocation } from "../events/seats.js";
 import type { Zones } from "../events/zones.js";
 import type { KippuTicketto } from "../ledger/ticketto.js";
@@ -23,6 +24,8 @@ export interface SalesOptions {
   readonly zones: Pick<Zones, "canonicalPosition">;
   /** `F-021`'s seated double-allocation pre-check (`T-021-06`). */
   readonly seats: Pick<SeatAllocation, "lock" | "assertFree" | "ticketOf">;
+  /** How far Kippu's copy has read the ledger (`F-025`), for checkout's `ticketVisible`. */
+  readonly freshness: Pick<Freshness, "waitFor">;
   /** The payment provider's hosted checkout (`T-022-01`). */
   readonly provider: PaymentProvider;
   /** The absolute URL of kippu-api's payment webhook route, for the provider to call. */

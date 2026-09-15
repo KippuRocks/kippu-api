@@ -32,6 +32,16 @@ export interface CheckoutTokenInput {
   readonly token: string;
 }
 
+/** Reading a checkout, optionally waiting for its ticket to become visible. */
+export interface GetCheckoutInput extends CheckoutTokenInput {
+  /**
+   * Once the sale is issued, wait up to this many ms (at most 10,000) for Kippu's
+   * copy to reach the issuance receipt before answering (`ticketVisible`).
+   * Answers at once when the sale is not issued yet, or already visible.
+   */
+  readonly waitForTicketMs?: number;
+}
+
 /** A checkout's handoff, by the handoff token Saifu was given. */
 export interface HandoffTokenInput {
   readonly handoffToken: string;
@@ -169,6 +179,12 @@ export interface Checkout {
   readonly sale: CheckoutSale | null;
   /** What Kippu owes the buyer, who paid and got no ticket (`F-022` plan §5.5); `null` when nothing. */
   readonly refund: CheckoutRefund | null;
+  /**
+   * Whether Kippu's copy of the ledger has reached the sale's issuance receipt
+   * (`NFR-11`), so Saifu shows the ticket: only then may Ichiba say the ticket is
+   * in Saifu (`F-022` plan §5.1, confirmation freshness). `false` until issued.
+   */
+  readonly ticketVisible: boolean;
   /** ISO 8601. */
   readonly createdAt: string;
   /**
@@ -241,8 +257,11 @@ export interface Sales {
    * the checkout to its account at once; any other caller gets a Saifu handoff.
    */
   beginCheckout(request: SalesRequest, input: BeginCheckoutInput): Promise<BegunCheckout>;
-  /** The checkout `token` names. */
-  checkout(token: string): Promise<Checkout>;
+  /**
+   * The checkout `token` names. With `waitForTicketMs`, an issued sale's ticket is
+   * waited for, that long at most (up to 10 s), to be visible in Kippu's copy.
+   */
+  checkout(token: string, options?: { readonly waitForTicketMs?: number }): Promise<Checkout>;
   /**
    * Links the holder's account to the checkout `handoffToken` hands off
    * (`AD-19` A), unconfirmed, and answers with the pairing code. Linking the same

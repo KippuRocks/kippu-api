@@ -220,6 +220,7 @@ export function createDomainServices(
     store,
     ledger,
     authority,
+    freshness,
     classes: events.classes,
     zones: events.zones,
     seats: events.seats,
