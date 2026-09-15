@@ -94,6 +94,9 @@ describeWithStore("checkout sessions", () => {
       placement: { kind: "Unseated" },
       account: { state: "handoff", handoff: { handoffToken } },
       hold: null,
+      payment: null,
+      sale: null,
+      refund: null,
       createdAt: expect.any(String),
       expiresAt: expect.any(String),
     });
@@ -270,14 +273,7 @@ describeWithStore("checkout sessions", () => {
   it("an idle checkout with no hold expires after an hour; a held one lives on its hold", async () => {
     const s = await setup();
     let clock = new Date();
-    const sales = createSales({
-      store: harness.database.store,
-      ledger: harness.ledger,
-      classes: harness.events.classes,
-      zones: harness.events.zones,
-      seats: harness.events.seats,
-      now: () => clock,
-    });
+    const sales = createSales(harness.salesOptions({ now: () => clock }));
     const holder = await harness.linkedHolder();
     const buyer = {
       requestId: "r",
@@ -374,16 +370,14 @@ describeWithStore("checkout sessions", () => {
       ["Cancelled", "ERR-EventCancelled"],
       ["Finished", "ERR-EventFinished"],
     ] as const) {
-      const sales = createSales({
-        store: harness.database.store,
-        ledger: {
-          ...harness.ledger,
-          getEvent: async () => ({ ok: true, value: { ...found.value, status } }),
-        },
-        classes: harness.events.classes,
-        zones: harness.events.zones,
-        seats: harness.events.seats,
-      });
+      const sales = createSales(
+        harness.salesOptions({
+          ledger: {
+            ...harness.ledger,
+            getEvent: async () => ({ ok: true, value: { ...found.value, status } }),
+          },
+        }),
+      );
       await expect(
         sales.beginCheckout({ requestId: "r", principal: ANONYMOUS }, generalAdmission(s)),
       ).rejects.toMatchObject({ code });

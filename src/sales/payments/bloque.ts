@@ -112,6 +112,9 @@ export function createBloquePaymentProvider(
   }
 
   return {
+    // As `@bloque/payments`' README verifies it; 0.2.1 names no header in its types.
+    webhookSignatureHeader: "x-bloque-signature",
+
     async createCheckout(input: CreateHostedCheckout) {
       if (!Number.isSafeInteger(input.amount) || input.amount < 0) {
         throw new PaymentProviderError(
@@ -133,6 +136,9 @@ export function createBloquePaymentProvider(
           expires_at: input.expiresAt.toISOString(),
           success_url: input.successUrl,
           cancel_url: input.cancelUrl,
+          webhook_url: input.webhookUrl,
+          // A paid link can never be paid again; a failed attempt ends it (plan §5.4).
+          single_use: true,
         }),
       );
       return hostedCheckoutOf(created);

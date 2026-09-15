@@ -231,7 +231,7 @@ describeWithStore("sale assets and prices", () => {
     ).toEqual({ code: "BAD_REQUEST", errorCode: null });
   });
 
-  it("AC-B4.2: no price or sale asset reaches the ledger", async () => {
+  it("AC-B4.2: no price or sale asset reaches the ledger — granted or purchased issuance alike", async () => {
     const price = 7_391_842_615;
     const context = await setup("DUSD/6");
     const { organiser, event } = context;
@@ -244,6 +244,31 @@ describeWithStore("sale assets and prices", () => {
       price: price + 1,
     });
     expect(await (await hold(context, stallsClass.id))()).toMatchObject({ outcome: "held" });
+
+    // A purchased ticket, paid for and issued through checkout (T-022-04).
+    const buyer = await harness.linkedHolder();
+    const { token } = await buyer.client.sales.checkout.begin.mutate({
+      event,
+      class: stallsClass.id,
+      zone: context.unseated,
+      placement: { kind: "Unseated" },
+    });
+    expect(await harness.anonymous().sales.checkout.hold.mutate({ token })).toMatchObject({
+      outcome: "held",
+    });
+    const payment = await harness.anonymous().sales.checkout.pay.mutate({
+      token,
+      successUrl: "https://ichiba.kippu.example/paid",
+      cancelUrl: "https://ichiba.kippu.example/cancelled",
+    });
+    expect(payment).toMatchObject({ amount: price + 1, asset: "DUSD/6" });
+    const providerCheckout = payment.url.split("/").at(-1) as string;
+    harness.payments.pay(providerCheckout);
+    await harness.sales.payments.reconcile("webhook", providerCheckout);
+    expect((await harness.anonymous().sales.checkout.get.query({ token })).sale?.status).toBe(
+      "issued",
+    );
+
     const guests = await organiser.client.events.classes.define.mutate(
       stalls(event, { provenance: "Granted", name: "Guests", price: null }),
     );

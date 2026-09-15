@@ -35,6 +35,8 @@ export interface CreateHostedCheckout {
   readonly successUrl: string;
   /** Where the provider's page sends the buyer who gives up. */
   readonly cancelUrl: string;
+  /** Where the provider sends this checkout's webhooks: kippu-api's public webhook route. */
+  readonly webhookUrl: string;
 }
 
 /**
@@ -82,7 +84,12 @@ export class PaymentProviderError extends Error {
 
 /** A hosted-checkout payment provider (plan §5.4). */
 export interface PaymentProvider {
-  /** Creates a hosted checkout for a hold, offering `PAYMENT_METHODS` only. */
+  /** The request header a webhook's signature arrives in. */
+  readonly webhookSignatureHeader: string;
+  /**
+   * Creates a single-use hosted checkout for a hold, offering `PAYMENT_METHODS`
+   * only: once paid, or cancelled or failed, it can never be paid again (plan §5.4).
+   */
   createCheckout(input: CreateHostedCheckout): Promise<HostedCheckout>;
   /** The checkout as the provider reports it now. */
   retrieve(id: string): Promise<HostedCheckout>;

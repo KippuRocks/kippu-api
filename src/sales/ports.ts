@@ -85,9 +85,11 @@ export interface HandoffLink {
 
 /**
  * Where a checkout's hold stands (`REQ-HD-1`). `outstanding` counts against
- * capacity, class quota and seat; `lapsed` and `released` no longer do.
+ * capacity, class quota and seat; so does `issuing` — paid, and being issued,
+ * no longer lapsing — and `confirmed`, whose ticket is issued. `lapsed` and
+ * `released` no longer count.
  */
-export type HoldStatus = "outstanding" | "lapsed" | "released";
+export type HoldStatus = "outstanding" | "issuing" | "confirmed" | "lapsed" | "released";
 
 /** A checkout's hold on the issuance of its ticket: a Kippu fact, with no holder (`REQ-HD-2`). */
 export interface CheckoutHold {
@@ -96,6 +98,60 @@ export interface CheckoutHold {
   readonly expiresAt: string;
   /** Whether the lifetime was extended, once, when payment started (`F-022` plan §5.2). */
   readonly extended: boolean;
+  /**
+   * The sale asset and price the hold was placed at — what paying for it charges,
+   * whatever the class's price is now (`F-021` plan, "Prices"). `null` for holds
+   * placed before prices existed.
+   */
+  readonly asset: string | null;
+  /** In the asset's minor units. */
+  readonly price: number | null;
+}
+
+/** A hosted checkout at the payment provider, created for the hold (`F-022` plan §5.4). */
+export interface CheckoutPayment {
+  /** `open`: the buyer can pay at `url`; `paid`; `expired` or `cancelled`: unpaid, and over. */
+  readonly status: "open" | "paid" | "expired" | "cancelled";
+  /** The provider's hosted page: Ichiba redirects the buyer there. */
+  readonly url: string;
+  /** In the event's sale asset's minor units. */
+  readonly amount: number;
+  readonly asset: string;
+  /** ISO 8601: the hold's expiry, extended once when the checkout was created. */
+  readonly expiresAt: string;
+}
+
+/** The ticket a verified payment is issuing. */
+export interface CheckoutSale {
+  /**
+   * `issuing`: being issued; `issued`: the ledger recorded the ticket; `rejected`:
+   * it was not issued, and a refund is due; `failed`: no verdict came back yet.
+   */
+  readonly status: "issuing" | "issued" | "rejected" | "failed";
+  /** The `TicketId`, once assembled. */
+  readonly ticket: string | null;
+  /** The issuance receipt's log cursor, once issued: wait for the derived copy to reach it. */
+  readonly cursor: string | null;
+}
+
+/** A refund entitlement (`F-022` plan §5.1 step 7, §5.5). */
+export interface CheckoutRefund {
+  readonly amount: number;
+  readonly asset: string;
+  /**
+   * `issuance-rejected`: the ticket was not issued; `place-gone`: the payment
+   * landed after the hold ended and the place was taken; `amount-mismatch`: the
+   * provider took another amount than the price.
+   */
+  readonly reason: "issuance-rejected" | "place-gone" | "amount-mismatch";
+}
+
+/** Paying for a checkout's hold: the checkout page's token, and Ichiba's return URLs. */
+export interface PayCheckoutInput extends CheckoutTokenInput {
+  /** Where the provider's page sends the buyer after paying. */
+  readonly successUrl: string;
+  /** Where the provider's page sends the buyer who gives up. */
+  readonly cancelUrl: string;
 }
 
 /** A checkout session. */
@@ -107,6 +163,12 @@ export interface Checkout {
   readonly account: CheckoutAccount;
   /** The checkout's hold, once placed; `null` before. */
   readonly hold: CheckoutHold | null;
+  /** The latest hosted checkout created for the hold, as Kippu last read it; `null` before paying. */
+  readonly payment: CheckoutPayment | null;
+  /** The issuance a verified payment started (`T-022-04`); `null` before one. */
+  readonly sale: CheckoutSale | null;
+  /** What Kippu owes the buyer, who paid and got no ticket (`F-022` plan §5.5); `null` when nothing. */
+  readonly refund: CheckoutRefund | null;
   /** ISO 8601. */
   readonly createdAt: string;
   /**
@@ -150,7 +212,11 @@ export type CheckoutFailure =
   /** The checkout has no holder account yet: hand off to Saifu first (`AC-B4.1`). */
   | "account-required"
   /** The checkout's hold lapsed or was released: begin a new checkout. */
-  | "hold-ended";
+  | "hold-ended"
+  /** The checkout has no hold to pay for yet. */
+  | "hold-required"
+  /** The checkout's hold is already paid for. */
+  | "already-paid";
 
 export class CheckoutError extends Error {
   readonly failure: CheckoutFailure;
@@ -200,6 +266,29 @@ export interface Sales {
    * the checkout is over.
    */
   hold(request: SalesRequest, token: string): Promise<HoldOutcome>;
+  /**
+   * Starts paying for the checkout's outstanding hold (`F-022` plan §5.1 step 4):
+   * creates the provider's hosted checkout for the hold's price, expiring with the
+   * hold — extended once, now — or answers with the open one. A cancelled or
+   * expired one is replaced while the hold lives. Ichiba redirects to `url`.
+   */
+  pay(request: SalesRequest, input: PayCheckoutInput): Promise<CheckoutPayment>;
+  /**
+   * The buyer gives up (`AC-B4.3`): the open hosted checkout is cancelled and the
+   * hold released. A payment that landed first is honoured instead.
+   */
+  cancel(request: SalesRequest, token: string): Promise<Checkout>;
+  /**
+   * A payment provider's webhook: its raw body and signature. Answers `false`
+   * when the signature does not verify. A verified webhook only prompts Kippu to
+   * retrieve the checkouts it names; a payment is trusted once retrieved `paid`
+   * for the hold's price (plan §5.4).
+   */
+  paymentWebhook(
+    requestId: string,
+    rawBody: string,
+    headers: Readonly<Record<string, string | string[] | undefined>>,
+  ): Promise<boolean>;
   /**
    * The event's public sale inventory (`T-022-10`): its `Purchased` classes with
    * availability counting holds, and the free seats of each seated zone.

@@ -89,12 +89,16 @@ export async function hasHadHold(db: Queryable, event: string): Promise<boolean>
 
 /** What counts against an allocation, read under its locks. */
 export interface AllocationCounts {
-  /** Outstanding holds for the event. */
+  /** Holds for the event not yet issued: outstanding, or paid and being issued. */
   readonly eventHolds: number;
-  /** Outstanding holds for the class. */
+  /** Holds for the class not yet issued. */
   readonly classHolds: number;
-  /** Whether an outstanding hold holds the target's seat. */
+  /** Whether a hold not released or lapsed — outstanding, issuing or issued — holds the target's seat. */
   readonly seatHeld: boolean;
+  /** Purchased tickets of the event issued through confirmed holds. */
+  readonly purchased: number;
+  /** Purchased tickets of the class issued through confirmed holds (`REQ-TC-5`). */
+  readonly classPurchased: number;
   /** Granted issuances of the event the ledger has not refused. */
   readonly granted: number;
   /** Granted issuances of the class the ledger has not refused. */
@@ -107,6 +111,8 @@ interface CountsRow {
   readonly event_holds: string;
   readonly class_holds: string;
   readonly seat_held: boolean;
+  readonly purchased: string;
+  readonly class_purchased: string;
   readonly granted: string;
   readonly class_granted: string;
   readonly quota: string | null;
@@ -130,11 +136,17 @@ export async function allocationCounts(
   const row = (
     await db.query<CountsRow>(
       `SELECT
-         (SELECT count(*) FROM holds WHERE event = $1 AND status = 'outstanding') AS event_holds,
-         (SELECT count(*) FROM holds WHERE class_id = $2 AND status = 'outstanding') AS class_holds,
+         (SELECT count(*) FROM holds WHERE event = $1 AND status IN ('outstanding', 'issuing'))
+           AS event_holds,
+         (SELECT count(*) FROM holds WHERE class_id = $2 AND status IN ('outstanding', 'issuing'))
+           AS class_holds,
          EXISTS (SELECT 1 FROM holds
-                 WHERE event = $1 AND zone = $3 AND position = $4 AND status = 'outstanding')
+                 WHERE event = $1 AND zone = $3 AND position = $4
+                   AND status IN ('outstanding', 'issuing', 'confirmed'))
            AS seat_held,
+         (SELECT count(*) FROM holds WHERE event = $1 AND status = 'confirmed') AS purchased,
+         (SELECT count(*) FROM holds WHERE class_id = $2 AND status = 'confirmed')
+           AS class_purchased,
          (SELECT count(*) FROM granted_issuances WHERE event = $1 AND status <> 'rejected')
            AS granted,
          (SELECT count(*) FROM granted_issuances WHERE class_id = $2 AND status <> 'rejected')
@@ -147,6 +159,8 @@ export async function allocationCounts(
     eventHolds: Number(row.event_holds),
     classHolds: Number(row.class_holds),
     seatHeld: row.seat_held,
+    purchased: Number(row.purchased),
+    classPurchased: Number(row.class_purchased),
     granted: Number(row.granted),
     classGranted: Number(row.class_granted),
     quota: row.quota === null ? null : Number(row.quota),
@@ -164,7 +178,7 @@ export function capacityRemaining(
   counts: AllocationCounts,
 ): number | null {
   if (event.maxCapacity === null) return null;
-  const issued = Math.max(event.issued, counts.granted);
+  const issued = Math.max(event.issued, counts.granted + counts.purchased);
   return Math.max(0, event.maxCapacity - issued - counts.eventHolds);
 }
 
@@ -183,7 +197,10 @@ export function capacityHasRoom(
  */
 export function quotaRemaining(counts: AllocationCounts): number | null {
   if (counts.quota === null) return null;
-  return Math.max(0, counts.quota - counts.classHolds - counts.classGranted);
+  return Math.max(
+    0,
+    counts.quota - counts.classHolds - counts.classPurchased - counts.classGranted,
+  );
 }
 
 /** Whether one more allocation fits the class quota (`REQ-TC-5`, `REQ-HD-3`): holds and granted issuances together. */
@@ -192,7 +209,7 @@ export function quotaHasRoom(counts: AllocationCounts): boolean {
   return remaining === null || remaining > 0;
 }
 
-/** The canonical designations of a zone's seats outstanding holds hold. */
+/** The canonical designations of a zone's seats held by holds outstanding, issuing or issued. */
 export async function heldPositions(
   db: Queryable,
   event: string,
@@ -201,8 +218,8 @@ export async function heldPositions(
 ): Promise<ReadonlySet<string>> {
   const result = await db.query<{ position: string }>(
     `SELECT position FROM holds
-     WHERE event = $1 AND zone = $2 AND position IS NOT NULL AND status = 'outstanding'
-       AND expires_at > $3`,
+     WHERE event = $1 AND zone = $2 AND position IS NOT NULL
+       AND (status IN ('issuing', 'confirmed') OR (status = 'outstanding' AND expires_at > $3))`,
     [event, zone, at],
   );
   return new Set(result.rows.map((row) => row.position));

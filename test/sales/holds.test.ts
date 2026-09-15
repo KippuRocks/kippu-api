@@ -230,6 +230,8 @@ describeWithStore("issuance holds", () => {
       status: "outstanding",
       expiresAt: expect.any(String),
       extended: false,
+      asset: "COPM/2",
+      price: 25_000,
     });
     expect(await outstanding(s.event)).toBe(1);
     expect(harness.sponsored.length).toBe(sponsoredBefore);
@@ -245,14 +247,7 @@ describeWithStore("issuance holds", () => {
   /** The sales services over the harness's store and ledger, with a clock the test moves. */
   function clocked(): Clocked {
     let clock = new Date();
-    const sales = createSales({
-      store: harness.database.store,
-      ledger: harness.ledger,
-      classes: harness.events.classes,
-      zones: harness.events.zones,
-      seats: harness.events.seats,
-      now: () => clock,
-    });
+    const sales = createSales(harness.salesOptions({ now: () => clock }));
     return {
       sales,
       advance: (ms) => {

@@ -10,6 +10,7 @@ const input = (expiresAt: Date) => ({
   expiresAt,
   successUrl: "https://ichiba.kippu.example/checkout/done",
   cancelUrl: "https://ichiba.kippu.example/checkout/cancelled",
+  webhookUrl: "https://api.kippu.example/webhooks/payments/bloque",
 });
 
 describe("the deterministic test payment provider", () => {

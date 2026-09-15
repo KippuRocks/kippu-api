@@ -52,3 +52,19 @@ export async function inventory(event: string): Promise<SaleInventory> {
   const ichiba = createTRPCClient<AppRouter>({ links: [httpBatchLink({ url })] });
   return ichiba.sales.inventory.query({ event });
 }
+
+/**
+ * How Ichiba pays for a held checkout (`T-022-04`): it redirects the buyer to the
+ * provider's hosted page, then reads the checkout until its sale is issued.
+ */
+export async function payAndWait(token: string, returnTo: string): Promise<string | null> {
+  const ichiba = createTRPCClient<AppRouter>({ links: [httpBatchLink({ url })] });
+  const payment = await ichiba.sales.checkout.pay.mutate({
+    token,
+    successUrl: `${returnTo}/paid`,
+    cancelUrl: `${returnTo}/cancelled`,
+  });
+  void payment.url;
+  const { sale, refund } = await ichiba.sales.checkout.get.query({ token });
+  return sale?.status === "issued" ? sale.ticket : (refund?.reason ?? null);
+}

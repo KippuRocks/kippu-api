@@ -6,8 +6,12 @@ import Fastify, {
   type FastifyServerOptions,
 } from "fastify";
 import type { Services } from "./auth/ports.js";
+import { PAYMENT_WEBHOOK_PATH } from "./sales/payment.js";
 import { makeCreateContext } from "./trpc/fastify-context.js";
 import { appRouter } from "./trpc/router.js";
+
+/** The largest payment webhook body, in bytes. */
+export const WEBHOOK_BODY_LIMIT = 64 * 1024;
 
 /** Where the `C5` tRPC contract is served. */
 export const TRPC_PREFIX = "/v0/trpc";
@@ -37,6 +41,21 @@ export function buildApp(
   });
 
   app.get("/health", async () => ({ status: "ok" }) as const);
+
+  // Payment providers' webhooks (T-022-04): an operational route outside the `C5` contract. The
+  // signature covers the raw body, so the body is kept exactly as received.
+  app.register(async (scope) => {
+    scope.addContentTypeParser(
+      "application/json",
+      { parseAs: "string", bodyLimit: WEBHOOK_BODY_LIMIT },
+      (_request, body, done) => done(null, body),
+    );
+    scope.post(PAYMENT_WEBHOOK_PATH, async (request, reply) => {
+      const rawBody = typeof request.body === "string" ? request.body : "";
+      const verified = await services.sales.paymentWebhook(request.id, rawBody, request.headers);
+      return reply.code(verified ? 204 : 401).send();
+    });
+  });
 
   // Big enough for an uploaded image in base64 (`MAX_IMAGE_BYTES`), for tRPC calls
   // only; every other route keeps Fastify's default.
