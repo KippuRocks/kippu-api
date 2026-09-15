@@ -238,6 +238,7 @@ The `events` router is the organiser's. Every procedure acts for the signed-in o
 
 - **Checkout** (`sales.checkout.*`): `begin` for what the buyer picked returns the page's `token`, once. With a holder session the checkout is linked at once; otherwise it carries a Saifu handoff with a separate `handoffToken`, which only links.
 - **Pairing** (plan §5.1, ruled in `M2`): Saifu links with the handoff token and gets a 6-digit pairing code; the checkout page shows the same code, and the buyer confirms the match (`confirmLink`) or discards the link (`discardLink`, which replaces the handoff token). An unconfirmed link cannot hold.
+- **Inventory** (`sales.inventory`, public): availability of the event and each `Purchased` class counting outstanding holds, and each seated zone's free seats — for display; the hold decides.
 - **Lifetime**: a checkout with no hold expires an hour after it began. A hold lives 10 minutes, extendable once by 5 (`src/sales/holds.ts`), counted with `src/sales/allocation.ts`.
 
 ### Payments (`F-022`)

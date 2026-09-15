@@ -200,4 +200,68 @@ export interface Sales {
    * the checkout is over.
    */
   hold(request: SalesRequest, token: string): Promise<HoldOutcome>;
+  /**
+   * The event's public sale inventory (`T-022-10`): its `Purchased` classes with
+   * availability counting holds, and the free seats of each seated zone.
+   * `ERR-EventNotFound` when the ledger has no such event.
+   */
+  inventory(event: string): Promise<SaleInventory>;
+}
+
+/** An event's inventory, by its ledger identifier. */
+export interface SaleInventoryInput {
+  /** The `EventId`, 64 lower-case hex characters. */
+  readonly event: string;
+}
+
+/** A `Purchased` class on sale, and how many more of its tickets can be held (`T-022-10`). */
+export interface ClassOnSale {
+  /** The opaque `ClassId` (`REQ-TC-2`). */
+  readonly id: string;
+  readonly name: string;
+  readonly description: string | null;
+  /** The attendance policy its tickets carry. Times are Unix milliseconds. */
+  readonly policy:
+    | { readonly kind: "Single" }
+    | { readonly kind: "Multiple"; readonly max: number; readonly until: number | null }
+    | { readonly kind: "Unlimited"; readonly until: number | null };
+  /**
+   * How many more of the class's tickets can be held now: the lesser of the
+   * event's and the class quota's room, each counting outstanding holds
+   * (`REQ-HD-3`). `null` when neither bounds it.
+   */
+  readonly available: number | null;
+}
+
+/** A zone of the event, and — in a seated zone — the seats that can be picked. */
+export type ZoneOnSale =
+  | { readonly id: string; readonly kind: "Unseated" }
+  | {
+      readonly id: string;
+      readonly kind: "Seated";
+      /**
+       * The zone's canonical positions neither issued, being issued, nor held by a
+       * checkout, in the order the organiser uploaded them (`US-B5`, `REQ-HD-3`).
+       */
+      readonly freeSeats: readonly string[];
+    };
+
+/**
+ * What Ichiba offers of an event (`T-022-10`; `REQ-MP-7`): public, with no
+ * session. It is a snapshot for display: a hold, placed atomically, is what
+ * decides (`AC-B4.4`).
+ */
+export interface SaleInventory {
+  readonly event: string;
+  /** Whether the event is on sale: `Active` on the ledger (`REQ-EV-8`). Nothing is offered otherwise. */
+  readonly onSale: boolean;
+  /**
+   * How many more tickets of any class can be held: capacity less issued
+   * tickets and outstanding holds (`INV-4`). `null` when unbounded.
+   */
+  readonly available: number | null;
+  /** The event's `Purchased` classes, in the order they were defined; empty when not on sale. */
+  readonly classes: readonly ClassOnSale[];
+  /** The event's zones, in ledger order; empty when not on sale. */
+  readonly zones: readonly ZoneOnSale[];
 }

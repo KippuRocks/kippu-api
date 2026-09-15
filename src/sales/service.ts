@@ -5,6 +5,7 @@ import type { KippuTicketto } from "../ledger/ticketto.js";
 import type { Store } from "../store/store.js";
 import { createCheckouts } from "./checkout.js";
 import { createHolds, type Holds } from "./holds.js";
+import { createInventory } from "./inventory.js";
 import type { Sales } from "./ports.js";
 
 export interface SalesOptions {
@@ -16,7 +17,7 @@ export interface SalesOptions {
   /** `F-021`'s zones, for canonical seat positions (`REQ-ID-3`). */
   readonly zones: Pick<Zones, "canonicalPosition">;
   /** `F-021`'s seated double-allocation pre-check (`T-021-06`). */
-  readonly seats: Pick<SeatAllocation, "lock" | "assertFree">;
+  readonly seats: Pick<SeatAllocation, "lock" | "assertFree" | "ticketOf">;
   readonly now?: () => Date;
   readonly randomBytes?: (length: number) => Uint8Array;
 }
@@ -24,5 +25,6 @@ export interface SalesOptions {
 /** The `F-022` services behind the sales router, and the holds they place. */
 export function createSales(options: SalesOptions): Sales & { readonly holds: Holds } {
   const holds = createHolds(options);
-  return { ...createCheckouts({ ...options, holds }), holds };
+  const { inventory } = createInventory(options);
+  return { ...createCheckouts({ ...options, holds }), inventory, holds };
 }

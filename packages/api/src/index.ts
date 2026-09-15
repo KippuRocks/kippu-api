@@ -17,6 +17,7 @@ export type {
   CheckoutAccount,
   CheckoutHold,
   CheckoutTokenInput,
+  ClassOnSale,
   ConfirmLinkInput,
   HandoffLink,
   HandoffTokenInput,
@@ -24,5 +25,8 @@ export type {
   HoldRefusal,
   HoldStatus,
   SaifuHandoff,
+  SaleInventory,
+  SaleInventoryInput,
+  ZoneOnSale,
 } from "../../../src/sales/ports.js";
 export type { AppRouter } from "../../../src/trpc/router.js";

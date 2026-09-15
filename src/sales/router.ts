@@ -14,6 +14,8 @@ import {
   type HandoffLink,
   type HandoffTokenInput,
   type HoldOutcome,
+  type SaleInventory,
+  type SaleInventoryInput,
 } from "./ports.js";
 
 /**
@@ -200,7 +202,24 @@ const checkoutRouter = router({
     ),
 });
 
+const inventoryInput = z
+  .object({ event: z.string().regex(/^[0-9a-f]{64}$/, "expected 64 lower-case hex characters") })
+  .strict();
+
 /** Primary sales (`F-022`). */
 export const salesRouter = router({
   checkout: checkoutRouter,
+  /**
+   * What Ichiba offers of an event, with no session (`REQ-MP-7`): whether it is
+   * on sale, how many tickets can still be held — of the event, and of each
+   * `Purchased` class — counting outstanding holds (`REQ-HD-3`), and each seated
+   * zone's free canonical seats, neither issued nor held (`US-B5`). A display
+   * snapshot: the hold decides. `ERR-EventNotFound` for no such event.
+   */
+  inventory: publicProcedure
+    .input(parser<SaleInventoryInput>(inventoryInput))
+    .query(
+      ({ ctx, input }): Promise<SaleInventory> =>
+        mapped(() => ctx.services.sales.inventory(input.event)),
+    ),
 });

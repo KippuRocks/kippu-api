@@ -103,7 +103,7 @@ function pairingCodeOf(
  * before a hold is placed (`T-022-03`). A checkout with no hold expires after an
  * hour.
  */
-export function createCheckouts(options: CheckoutsOptions): Sales {
+export function createCheckouts(options: CheckoutsOptions): Omit<Sales, "inventory"> {
   const { store, ledger, classes, zones, holds, now = () => new Date() } = options;
   const random = options.randomBytes ?? ((length: number) => randomBytes(length));
 
