@@ -349,7 +349,7 @@ export interface SaleInventory {
   readonly event: string;
   /**
    * Whether the event is on sale: `Active` on the ledger (`REQ-EV-8`), with a sale
-   * asset chosen. Nothing is offered otherwise.
+   * asset chosen and every `Purchased` class priced. Nothing is offered otherwise.
    */
   readonly onSale: boolean;
   /** What the event's prices are in: `COPM/2` or `DUSD/6`; `null` until the organiser chooses. */

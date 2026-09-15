@@ -10,6 +10,7 @@ import {
   capacityRemaining,
   heldPositions,
   quotaRemaining,
+  unpricedClasses,
 } from "./allocation.js";
 import type { ClassOnSale, SaleInventory, ZoneOnSale } from "./ports.js";
 
@@ -65,8 +66,10 @@ export function createInventory(options: InventoryOptions): Inventory {
             [eventId],
           )
         ).rows[0]?.asset ?? null;
-      // Nothing is held before the organiser chooses what the event's prices are in.
-      if (event.status !== "Active" || asset === null) {
+      // Nothing is held before the organiser chooses what the event's prices are in, nor
+      // while a Purchased class has no price, as after the asset changed (F-021 "Prices").
+      const unpriced = asset === null ? [] : await unpricedClasses(store, eventId);
+      if (event.status !== "Active" || asset === null || unpriced.length > 0) {
         return { event: eventId, onSale: false, asset, available: 0, classes: [], zones: [] };
       }
       const at = now();

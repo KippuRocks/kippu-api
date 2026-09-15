@@ -69,6 +69,11 @@ export interface EventSaleAsset {
   readonly asset: SaleAsset | null;
   /** `true` once the event has had a hold or a sale: the asset can no longer change. */
   readonly fixed: boolean;
+  /**
+   * The `Purchased` classes with no price, oldest first. Changing the asset clears
+   * every price; the event is not on sale until this is empty.
+   */
+  readonly unpriced: readonly string[];
 }
 
 /** A write the ledger recorded. */
@@ -247,7 +252,10 @@ export interface TicketClass {
   /** As tickets of the class carry them: `cannotTransfer` implies `cannotResale` (`REQ-TK-2`). */
   readonly restrictions: TicketRestrictions;
   readonly quota: number | null;
-  /** A `Purchased` class's price, in the sale asset's minor units; `null` for a `Granted` class. */
+  /**
+   * A `Purchased` class's price, in the sale asset's minor units; `null` for a
+   * `Granted` class, and for a `Purchased` class whose price the asset's change cleared.
+   */
   readonly price: number | null;
   /** ISO 8601. */
   readonly createdAt: string;
@@ -271,7 +279,8 @@ export interface Events {
   ): Promise<CreatedEvent>;
   /**
    * Sets the sale asset of an event the organiser owns. Refused once the event
-   * has had a hold or a sale, unless it names the asset already set.
+   * has had a hold or a sale, unless it names the asset already set. Changing it
+   * from one asset to another clears every `Purchased` class's price.
    */
   setSaleAsset(
     organiserId: string,

@@ -59,8 +59,9 @@ export interface SaleTerms {
 
 /**
  * The event's sale asset and the class's current price — what a hold placed now
- * records — or `null` when the event has no sale asset or the class no price.
- * Read under the event's allocation lock, so the asset cannot change in between.
+ * records — or `null` when the event is not on sale: it has no sale asset, or a
+ * `Purchased` class of it has no price, as after the asset changed (`F-021` plan,
+ * "Prices"). Read under the event's allocation lock, so neither can change in between.
  */
 export async function saleTerms(
   db: Queryable,
@@ -68,14 +69,26 @@ export async function saleTerms(
   classId: string,
 ): Promise<SaleTerms | null> {
   const row = (
-    await db.query<{ asset: SaleAsset | null; price: string | null }>(
+    await db.query<{ asset: SaleAsset | null; price: string | null; unpriced: boolean }>(
       `SELECT (SELECT asset FROM event_sale_assets WHERE event = $1) AS asset,
-              (SELECT price FROM ticket_classes WHERE id = $2 AND event = $1) AS price`,
+              (SELECT price FROM ticket_classes WHERE id = $2 AND event = $1) AS price,
+              EXISTS (SELECT 1 FROM ticket_classes
+                      WHERE event = $1 AND provenance = 'Purchased' AND price IS NULL) AS unpriced`,
       [event, classId],
     )
   ).rows[0];
-  if (row === undefined || row.asset === null || row.price === null) return null;
+  if (row === undefined || row.asset === null || row.price === null || row.unpriced) return null;
   return { asset: row.asset, price: Number(row.price) };
+}
+
+/** The ids of the event's `Purchased` classes with no price: each must be priced before it is on sale. */
+export async function unpricedClasses(db: Queryable, event: string): Promise<readonly string[]> {
+  const rows = await db.query<{ id: string }>(
+    `SELECT id FROM ticket_classes WHERE event = $1 AND provenance = 'Purchased' AND price IS NULL
+     ORDER BY created_at, id`,
+    [event],
+  );
+  return rows.rows.map((row) => row.id);
 }
 
 /**
