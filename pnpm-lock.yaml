@@ -36,6 +36,9 @@ importers:
       '@ticketto/binding-offchain':
         specifier: file:vendor/libticketto/ticketto-binding-offchain-0.0.0.tgz
         version: file:vendor/libticketto/ticketto-binding-offchain-0.0.0.tgz
+      '@ticketto/ledger-rules':
+        specifier: file:vendor/libticketto/ticketto-ledger-rules-0.0.0.tgz
+        version: file:vendor/libticketto/ticketto-ledger-rules-0.0.0.tgz
       '@ticketto/profile-v0':
         specifier: file:vendor/libticketto/ticketto-profile-v0-0.0.0.tgz
         version: file:vendor/libticketto/ticketto-profile-v0-0.0.0.tgz
@@ -561,7 +564,7 @@ packages:
     engines: {node: '>=18.0.0'}
 
   '@ticketto/backend-memory@file:vendor/libticketto/ticketto-backend-memory-0.0.0.tgz':
-    resolution: {integrity: sha512-WhS3S9GzogBlGTHsUmsck7f0OJ76alVNXX62+X1nccYkgkzsCezwQkI0s3em9EFKybPFjJcjQQXY/lCqVFZvxA==, tarball: file:vendor/libticketto/ticketto-backend-memory-0.0.0.tgz}
+    resolution: {integrity: sha512-McCiV7ByPsw2dejf/h1wGKCoaARijkR7/C8lIrWyq04Hy2szZwB5qo2+qUvPbhSLZToWa2zqLMYmnK571DdqDg==, tarball: file:vendor/libticketto/ticketto-backend-memory-0.0.0.tgz}
     version: 0.0.0
     engines: {node: '>=24'}
 
@@ -571,12 +574,12 @@ packages:
     engines: {node: '>=24'}
 
   '@ticketto/ledger-rules@file:vendor/libticketto/ticketto-ledger-rules-0.0.0.tgz':
-    resolution: {integrity: sha512-v7XJYd6TUoQ+lrONPdWQKdAvvOx6KzTxo2ry3Sg1E3EU1GKWosNQxkdTNnRx75XFXcgDwzUEnCxvwQtQIaNNQQ==, tarball: file:vendor/libticketto/ticketto-ledger-rules-0.0.0.tgz}
+    resolution: {integrity: sha512-qAwEU6piKN+JgC8wRKfQAHYqsDwjhzibgGNMlKriBHxBJ4rg1+2zahF3ECDHGBS/I401cZ0h986XndAxa2hPCg==, tarball: file:vendor/libticketto/ticketto-ledger-rules-0.0.0.tgz}
     version: 0.0.0
     engines: {node: '>=24'}
 
   '@ticketto/log@file:vendor/libticketto/ticketto-log-0.0.0.tgz':
-    resolution: {integrity: sha512-Fe/EGvZV9JOS6mBRDu+hEZw05vbceOBxKAS+0yep61Gi/cBrWIWkRIPo33HSMUrN3r/WCmiVghYq6W3JBLBfgw==, tarball: file:vendor/libticketto/ticketto-log-0.0.0.tgz}
+    resolution: {integrity: sha512-bNO+nN989kQk9D/U7FH+v5iDpyCaisw50OJ9/Q08m9UMOBhDlGwx/EVdENFrUKiP9fFCo5a5p3/xK/kY/pPP5w==, tarball: file:vendor/libticketto/ticketto-log-0.0.0.tgz}
     version: 0.0.0
     engines: {node: '>=24'}
 

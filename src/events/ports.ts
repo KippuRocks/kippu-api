@@ -56,6 +56,29 @@ export interface CreateEventInput {
   readonly saleAsset?: SaleAsset | null;
 }
 
+/** An event's pass window to set (`T-021-15`). */
+export interface SetPassWindowInput {
+  readonly event: string;
+  /** Milliseconds, between `minimumMs` and `maximumMs` of {@link EventPassWindow}. */
+  readonly windowMs: number;
+}
+
+/**
+ * How long an access pass for an event stays valid (`NFR-5`, `REQ-AP-3`): Kippu's
+ * per-event setting, within the ledger's maximum; not a ledger fact.
+ */
+export interface EventPassWindow {
+  readonly event: string;
+  /** Milliseconds. */
+  readonly windowMs: number;
+  /** Whether the organiser has set none, and the default applies (60 seconds). */
+  readonly isDefault: boolean;
+  /** The shortest window that can be set: 10 seconds. */
+  readonly minimumMs: number;
+  /** The longest: the ledger's maximum pass window. */
+  readonly maximumMs: number;
+}
+
 /** An event's sale asset to set. */
 export interface SetSaleAssetInput {
   readonly event: string;
@@ -311,6 +334,14 @@ export interface Events {
     request: EventsRequest,
     input: SetSaleAssetInput,
   ): Promise<EventSaleAsset>;
+  /** The pass window of an event the organiser owns, with the bounds it can be set within. */
+  passWindow(organiserId: string, input: EventInput): Promise<EventPassWindow>;
+  /** Sets the pass window of an event the organiser owns; refused outside its bounds. */
+  setPassWindow(
+    organiserId: string,
+    request: EventsRequest,
+    input: SetPassWindowInput,
+  ): Promise<EventPassWindow>;
   /** The sale asset of an event the organiser owns. */
   saleAsset(organiserId: string, input: EventInput): Promise<EventSaleAsset>;
   /** Sets a `Purchased` class's price, for holds placed from now on. */

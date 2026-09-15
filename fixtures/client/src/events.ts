@@ -1,4 +1,4 @@
-import type { AppRouter, InvitationRefusal, SaleAsset } from "@kippu/api";
+import type { AppRouter, EventPassWindow, InvitationRefusal, SaleAsset } from "@kippu/api";
 import { createTRPCClient, httpBatchLink, TRPCClientError } from "@trpc/client";
 
 function organiserClient(token: string) {
@@ -126,4 +126,18 @@ export function redemptionRefusal(error: unknown): InvitationRefusal | null {
     return (typed.data?.reason ?? null) as InvitationRefusal | null;
   }
   return null;
+}
+
+/** How Ibento sets an event's pass window (`T-021-15`): within the bounds the read returns. */
+export async function setPassWindow(
+  token: string,
+  event: string,
+  windowMs: number,
+): Promise<EventPassWindow> {
+  const client = organiserClient(token);
+  const { minimumMs, maximumMs } = await client.events.passWindow.query({ event });
+  return client.events.setPassWindow.mutate({
+    event,
+    windowMs: Math.min(Math.max(windowMs, minimumMs), maximumMs),
+  });
 }
