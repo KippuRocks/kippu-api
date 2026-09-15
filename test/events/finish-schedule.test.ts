@@ -36,6 +36,7 @@ describeWithStore("scheduled Finished", () => {
       authority: harness.authority,
       ledger: harness.ledger,
       status: harness.events.status,
+      saleActions: () => harness.sales.organiserActions,
       operationLifetime: OPERATION_LIFETIME,
       now: () => new Date(clock),
       notify: async (notice) => {

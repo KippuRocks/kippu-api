@@ -307,7 +307,13 @@ describeWithStore("capacity proofs", () => {
         reason: "not-an-increase",
       });
     }
+    // Bounding an event with none is a decrease; leaving it unbounded is no change.
     const unbounded = await setup(null);
+    expect(await refusalWithReason(() => ask(unbounded.organiser, unbounded.event, 100))).toEqual({
+      code: "BAD_REQUEST",
+      errorCode: null,
+      reason: "not-an-increase",
+    });
     expect(await refusalWithReason(() => ask(unbounded.organiser, unbounded.event, null))).toEqual({
       code: "BAD_REQUEST",
       errorCode: null,

@@ -62,7 +62,10 @@ export interface CreateEventInput {
 /** A lower capacity for an event (`T-021-07`). */
 export interface DecreaseCapacityInput {
   readonly event: string;
-  /** No higher than the current capacity; an increase needs a capacity proof (`T-021-08`). */
+  /**
+   * No higher than the current capacity; an increase needs a capacity proof
+   * (`T-021-08`). Any capacity on an event with none is a decrease.
+   */
   readonly capacity: number;
 }
 

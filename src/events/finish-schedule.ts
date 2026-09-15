@@ -4,6 +4,7 @@ import type pg from "pg";
 import type { OrganiserAuthority } from "../authority/authority.js";
 import { RefusedRequest, SpecCodeError } from "../authority/errors.js";
 import type { KippuTicketto } from "../ledger/ticketto.js";
+import type { OrganiserSaleActions } from "../sales/organiser-actions.js";
 import type { Store } from "../store/store.js";
 import { ownedEvent } from "./ownership.js";
 import type { EventInput, EventsRequest, FinishSchedule, ScheduleFinishInput } from "./ports.js";
@@ -63,6 +64,11 @@ export interface FinishSchedulesOptions {
   readonly ledger: Pick<KippuTicketto, "getEvent">;
   readonly status: Pick<StatusTransitions, "finish">;
   /**
+   * `F-022`'s organiser sale actions, resolved when called: reconciliation reopens
+   * the sales a refused run had closed, as a refused finish does live.
+   */
+  readonly saleActions: () => Pick<OrganiserSaleActions, "reopenSales">;
+  /**
    * How long an assembled command stays valid, in milliseconds: the SDK's
    * `operationLifetime`. A submission left without a verdict can be accepted until then.
    */
@@ -114,7 +120,15 @@ function scheduleOf(row: ScheduleRow): FinishSchedule {
  * (`T-021-17`) settles it without a second submission while the first can land.
  */
 export function createFinishSchedules(options: FinishSchedulesOptions): FinishSchedules {
-  const { store, authority, ledger, status, operationLifetime, now = () => new Date() } = options;
+  const {
+    store,
+    authority,
+    ledger,
+    status,
+    saleActions,
+    operationLifetime,
+    now = () => new Date(),
+  } = options;
   const onError = options.onError ?? ((error: unknown) => console.error(error));
   const notify = options.notify ?? (async () => {});
 
@@ -190,7 +204,8 @@ export function createFinishSchedules(options: FinishSchedulesOptions): FinishSc
    * 1. the ledger has the event `Finished` — whether this run's submission landed
    *    or anyone else's — so the schedule is `finished`, with nothing submitted;
    * 2. the audit log has the run's submission refused, so it is `refused`, with the
-   *    ledger's code;
+   *    ledger's code — and the event's sales, if this run closed them and they are
+   *    still closed, reopen, as a refused finish's do live;
    * 3. a submission of the run is still without a verdict, and within its lifetime
    *    (plus {@link OPERATION_EXPIRY_MARGIN_MS}), so it may still land: the schedule
    *    stays `running`, for a later pass;
@@ -220,6 +235,17 @@ export function createFinishSchedules(options: FinishSchedulesOptions): FinishSc
     );
     const refused = audited.rows.find((entry) => entry.outcome === "rejected");
     if (refused !== undefined) {
+      const closedByRun = await client.query(
+        `SELECT 1 FROM event_sale_closures
+         WHERE event = $1 AND closed_request_id = $2 AND reopened_at IS NULL`,
+        [row.event, requestIdOf(row)],
+      );
+      if (closedByRun.rows.length > 0) {
+        await saleActions().reopenSales(row.event, {
+          requestId: requestIdOf(row),
+          actor: { kind: "system", organiserId: row.organiser_id, task: "scheduled-finish" },
+        });
+      }
       await client.query(
         `UPDATE finish_schedules SET status = 'refused', error_code = $2, ended_at = $3
          WHERE id = $1`,

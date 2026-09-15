@@ -20,8 +20,9 @@ export interface RequestCapacityIncreaseInput {
   /** The `EventId`. */
   readonly event: string;
   /**
-   * The capacity asked for: above the current one, or any capacity on an event
-   * with none. `null` removes the bound, which counts as an increase (`REQ-EV-7`).
+   * The capacity asked for, above the current bound. `null` removes the bound,
+   * which counts as an increase (`REQ-EV-7`). Bounding an event with none is a
+   * decrease (`events.decreaseCapacity`), and is refused here.
    */
   readonly capacity: number | null;
   readonly artefact: ProofArtefactInput;
