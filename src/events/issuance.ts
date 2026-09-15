@@ -5,6 +5,7 @@ import type {
   Discriminator,
   EventId,
   Placement,
+  Position,
   Receipt,
   Result,
   ZoneId,
@@ -16,6 +17,7 @@ import type { KippuTicketto } from "../ledger/ticketto.js";
 import type { Store } from "../store/store.js";
 import { ownedEvent } from "./ownership.js";
 import type { EventsRequest, IssuedTicket, IssueGrantedInput, TicketClass } from "./ports.js";
+import type { SeatAllocation } from "./seats.js";
 import { positionOf, type Zones } from "./zones.js";
 
 /** Bytes in an unseated placement's discriminator: 128 random bits (`AD-12`). */
@@ -27,6 +29,8 @@ export interface IssuanceOptions {
   readonly ledger: Pick<KippuTicketto, "getEvent" | "issueTicket">;
   readonly classes: Pick<Classes, "find">;
   readonly zones: Pick<Zones, "canonicalPosition">;
+  /** The seated double-allocation pre-check (`T-021-06`). */
+  readonly seats: Pick<SeatAllocation, "lock" | "assertFree">;
   readonly now?: () => Date;
   readonly randomBytes?: (length: number) => Uint8Array;
 }
@@ -38,8 +42,9 @@ export interface IssuanceOptions {
  * 2. The class is defined for the event (`ERR-UnknownClass`), and is `Granted`:
  *    a `Purchased` class's tickets are sold through checkout (`F-022`), never
  *    issued free.
- * 3. A seat is one of its zone's canonical positions (`REQ-ID-3`), refused
- *    before anything is signed. Where the zone is unknown or unseated, the
+ * 3. A seat is one of its zone's canonical positions, in NFC (`REQ-ID-3`), refused
+ *    before anything is signed; and no ticket, nor issuance in flight, already
+ *    holds it (`AC-B5.2`), or `ERR-TicketIdExists` before submission. Where the zone is unknown or unseated, the
  *    ledger's own verdict (`ERR-UnknownZone`, `ERR-ZoneKindMismatch`) is left to
  *    it. An unseated placement gets a random discriminator.
  * 4. Under a lock on the class, the class quota has room (`ERR-ClassQuotaExceeded`,
@@ -53,18 +58,28 @@ export interface IssuanceOptions {
  * No payment flow of any kind takes place, and nothing records one (`REQ-TC-4`).
  */
 export function issueGrantedWith(options: IssuanceOptions) {
-  const { store, authority, ledger, classes, zones, now = () => new Date() } = options;
+  const { store, authority, ledger, classes, zones, seats, now = () => new Date() } = options;
   const random = options.randomBytes ?? ((length: number) => randomBytes(length));
 
-  /** Records the issuance, provided the class quota has room. Returns the record's id. */
+  /**
+   * Records the issuance, provided the seat — for a canonical seat — is free
+   * (`AC-B5.2`) and the class quota has room. The seat is locked first, as every
+   * allocation of a seat locks it first. Returns the record's id.
+   */
   const reserve = async (
     organiserId: string,
     request: EventsRequest,
     input: IssueGrantedInput,
+    seat: Position | null,
   ): Promise<string> => {
     const client = await store.connect();
     try {
       await client.query("BEGIN");
+      let ticket: string | null = null;
+      if (seat !== null) {
+        await seats.lock(client, input.event, input.zone, seat);
+        ticket = await seats.assertFree(client, input.event, input.zone, seat);
+      }
       const locked = await client.query<{ quota: string | null }>(
         "SELECT quota FROM ticket_classes WHERE id = $1 AND event = $2 FOR UPDATE",
         [input.class, input.event],
@@ -87,10 +102,10 @@ export function issueGrantedWith(options: IssuanceOptions) {
       }
       const inserted = await client.query<{ id: string }>(
         `INSERT INTO granted_issuances
-           (event, class_id, holder, organiser_id, request_id, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6)
+           (event, class_id, ticket, holder, organiser_id, request_id, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
          RETURNING id`,
-        [input.event, input.class, input.holder, organiserId, request.requestId, now()],
+        [input.event, input.class, ticket, input.holder, organiserId, request.requestId, now()],
       );
       await client.query("COMMIT");
       return inserted.rows[0]?.id as string;
@@ -164,15 +179,17 @@ export function issueGrantedWith(options: IssuanceOptions) {
     }
 
     let placement: Placement;
+    // A canonical seat of a seated zone, checked for double allocation before submission.
+    let seat: Position | null = null;
     if (input.placement.kind === "Seated") {
       const zone = event.zones.find(({ id }) => id === input.zone);
+      if (zone?.kind === "Seated") {
+        seat = await zones.canonicalPosition(input.event, input.zone, input.placement.position);
+      }
       placement = {
         kind: "Seated",
-        position:
-          zone?.kind === "Seated"
-            ? await zones.canonicalPosition(input.event, input.zone, input.placement.position)
-            : // The ledger refuses a seat in an unknown or unseated zone with its own code.
-              positionOf(input.placement.position),
+        // The ledger refuses a seat in an unknown or unseated zone with its own code.
+        position: seat ?? positionOf(input.placement.position),
       };
     } else {
       placement = {
@@ -181,7 +198,7 @@ export function issueGrantedWith(options: IssuanceOptions) {
       };
     }
 
-    const reservation = await reserve(organiserId, request, input);
+    const reservation = await reserve(organiserId, request, input, seat);
     let issued: Awaited<ReturnType<typeof relayIssue>>;
     try {
       issued = await relayIssue(organiserId, request, input, placement, ticketClass);

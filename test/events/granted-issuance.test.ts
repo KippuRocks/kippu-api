@@ -350,7 +350,7 @@ describeWithStore("granted issuance", () => {
     expect(await rowCounts()).toEqual(recordsBefore);
   });
 
-  it("ERR-TicketIdExists: the ledger refuses the same seat twice, and the refused issuance does not count", async () => {
+  it("ERR-TicketIdExists: the same seat twice is refused, and the refusal takes no quota place", async () => {
     const context = await setup();
     const guests = await context.organiser.client.events.classes.define.mutate(
       granted(context.event, { quota: 2 }),
