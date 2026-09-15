@@ -5,12 +5,14 @@ import { RefusedRequest, SpecCodeError } from "../authority/errors.js";
 import { RefusalReasonCause, toTRPCError } from "../trpc/errors.js";
 import { operatorProcedure, organiserProcedure, router } from "../trpc/trpc.js";
 import type {
+  CheckInput,
   CreateOperatorInput,
   EnrolmentCode,
   GrantIdInput,
   GrantInput,
   ListGrantsInput,
   OperatorAccount,
+  OperatorAuthorisation,
   OperatorGrant,
   OperatorInput,
   OperatorsRequest,
@@ -90,6 +92,8 @@ const grantInput = z
   .strict()
   .refine((input) => input.until > input.from, "expected until to be later than from");
 
+const checkInput = z.object({ event: id32, gate }).strict();
+
 const grantIdInput = z.object({ grant: z.uuid() }).strict();
 
 const listGrantsInput = z
@@ -113,6 +117,9 @@ const requestOf = (ctx: {
  * Grants (`T-024-02`) scope an operator to gates of an event, for a window:
  * the organiser `create`s, `list`s and `revoke`s them, and the operator reads
  * `mine`. They change no ledger state (`AC-E5.1`).
+ *
+ * `check` (`T-024-03`) is what Iriguchi runs alongside `canAttend`, not in its
+ * path (`AC-E5.2`).
  */
 export const operatorsRouter = router({
   create: organiserProcedure
@@ -146,6 +153,18 @@ export const operatorsRouter = router({
         mapped(() =>
           ctx.services.operators.revokeSessions(ctx.principal.organiserId, requestOf(ctx), input),
         ),
+    ),
+  /**
+   * Whether the signed-in operator may admit at the gate of the event now
+   * (`AC-E5.2`). Refused as `FORBIDDEN` with a `CheckRefusal` in
+   * `error.data.reason`; a revoked or ended session is `UNAUTHORIZED`. Nothing is
+   * cached: a revocation refuses the next check.
+   */
+  check: operatorProcedure
+    .input(parser<CheckInput>(checkInput))
+    .query(
+      ({ ctx, input }): Promise<OperatorAuthorisation> =>
+        mapped(() => ctx.services.operators.check(ctx.principal, input)),
     ),
   grants: router({
     /**

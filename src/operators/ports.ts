@@ -100,6 +100,38 @@ export interface OperatorGrant {
   readonly revokedAt: string | null;
 }
 
+/** What Iriguchi checks alongside validating a pass (`AC-E5.2`): may I admit at this gate, now? */
+export interface CheckInput {
+  /** The `EventId`, 64 lower-case hex characters. */
+  readonly event: string;
+  /** The gate label, exactly as the grant names it. */
+  readonly gate: string;
+}
+
+/** The signed-in operator is authorised at the gate, now. */
+export interface OperatorAuthorisation {
+  readonly event: string;
+  readonly gate: string;
+  /** The grant that authorises it. */
+  readonly grant: string;
+  /** Unix milliseconds: when that grant's window ends. */
+  readonly until: number;
+  /** Unix milliseconds: Kippu's clock when it checked, for Iriguchi's clock comparison. */
+  readonly checkedAt: number;
+}
+
+/**
+ * Why `operators.check` refused, in `error.data.reason`, with `FORBIDDEN`. A
+ * platform reason, never a §10 code. An operator whose session was revoked or
+ * ended is refused before the check, as `UNAUTHORIZED`, with no reason.
+ *
+ * - `grant-revoked` — the grant for this gate, now, was revoked.
+ * - `before-window` — a grant for this gate starts later.
+ * - `after-window` — the operator's grants for this gate have ended.
+ * - `not-granted` — no grant for this gate of the event.
+ */
+export type CheckRefusal = "grant-revoked" | "before-window" | "after-window" | "not-granted";
+
 /**
  * Why an operator request was refused, in `error.data.reason`. A platform
  * reason, never a §10 code.
@@ -157,4 +189,10 @@ export interface Operators {
    * soonest first: the events and gates Iriguchi offers them.
    */
   myGrants(operator: OperatorPrincipal): Promise<readonly OperatorGrant[]>;
+  /**
+   * Whether the signed-in operator may admit at the gate of the event now
+   * (`T-024-03`; `AC-E5.2`). Read from the store on every call, with no caching,
+   * so a revocation refuses the next check. Refused with a {@link CheckRefusal}.
+   */
+  check(operator: OperatorPrincipal, input: CheckInput): Promise<OperatorAuthorisation>;
 }

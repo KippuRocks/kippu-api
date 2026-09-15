@@ -7,6 +7,7 @@ import { ownedEvent } from "../events/ownership.js";
 import type { KippuTicketto } from "../ledger/ticketto.js";
 import type { Store } from "../store/store.js";
 import type {
+  CheckRefusal,
   EnrolmentCode,
   OperatorAccount,
   OperatorGrant,
@@ -82,6 +83,10 @@ function unknownOperator(): RefusedRequest {
   return new RefusedRequest("no such operator", "NOT_FOUND", refusal("unknown-operator"));
 }
 
+function refusedCheck(reason: CheckRefusal): RefusedRequest {
+  return new RefusedRequest(`not authorised at this gate: ${reason}`, "FORBIDDEN", reason);
+}
+
 function unknownGrant(): RefusedRequest {
   return new RefusedRequest("no such grant", "NOT_FOUND", refusal("unknown-grant"));
 }
@@ -102,7 +107,9 @@ function unknownGrant(): RefusedRequest {
  *   and **revokes** a grant (`T-024-02`). The event's owner is read from the
  *   ledger (`REQ-IX-1`): `ERR-EventNotFound`, `ERR-NotOwner`. Nothing is written
  *   to it (`AC-E5.1`).
- * - An operator lists **their own** live and upcoming grants.
+ * - An operator lists **their own** live and upcoming grants, and **checks**
+ *   whether they may admit at a gate now (`T-024-03`): one indexed read, never
+ *   cached, so revoking a grant or a session refuses the next check.
  * - An operator of another organiser, or none, is `unknown-operator`; a grant of
  *   another organiser, or none, `unknown-grant`.
  */
@@ -282,6 +289,42 @@ export function createOperators({
         [operator.operatorId, operator.organiserId, now()],
       );
       return result.rows.map(grantOf);
+    },
+
+    async check(operator, { event, gate }) {
+      const at = now();
+      const result = await store.query<GrantRow>(
+        `SELECT ${GRANT_COLUMNS} FROM operator_grants
+         WHERE operator_id = $1 AND organiser_id = $2 AND event = $3 AND $4 = ANY (gates)`,
+        [operator.operatorId, operator.organiserId, event, gate],
+      );
+      const t = at.getTime();
+      const inWindow = (row: GrantRow) =>
+        row.valid_from.getTime() <= t && t < row.valid_until.getTime();
+      const live = result.rows.filter((row) => row.revoked_at === null);
+      const active = live
+        .filter(inWindow)
+        .sort((a, b) => b.valid_until.getTime() - a.valid_until.getTime())[0];
+      if (active !== undefined) {
+        return {
+          event,
+          gate,
+          grant: active.id,
+          until: active.valid_until.getTime(),
+          checkedAt: t,
+        };
+      }
+      // The most useful reason first: what applies now, then what will, then what did.
+      if (result.rows.some((row) => row.revoked_at !== null && inWindow(row))) {
+        throw refusedCheck("grant-revoked");
+      }
+      if (live.some((row) => row.valid_from.getTime() > t)) {
+        throw refusedCheck("before-window");
+      }
+      if (live.length > 0) {
+        throw refusedCheck("after-window");
+      }
+      throw refusedCheck(result.rows.length > 0 ? "grant-revoked" : "not-granted");
     },
   };
 }

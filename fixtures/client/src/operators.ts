@@ -1,5 +1,6 @@
 import type {
   AppRouter,
+  CheckRefusal,
   EnrolmentCode,
   GrantInput,
   OperatorAccount,
@@ -58,6 +59,29 @@ export async function gatesToChoose(operatorToken: string): Promise<[string, str
   return grants.flatMap((grant) =>
     grant.gates.map((gate): [string, string] => [grant.event, gate]),
   );
+}
+
+/**
+ * How Iriguchi checks the operator's authorisation alongside validating a pass
+ * (`T-024-03`, `AC-E5.2`): authorised, or the reason it may not admit.
+ */
+export async function mayAdmit(
+  operatorToken: string,
+  event: string,
+  gate: string,
+): Promise<
+  { authorised: true; drift: number } | { authorised: false; reason: CheckRefusal | null }
+> {
+  try {
+    const { checkedAt } = await signedIn(operatorToken).operators.check.query({ event, gate });
+    return { authorised: true, drift: Date.now() - checkedAt };
+  } catch (error) {
+    if (error instanceof TRPCClientError) {
+      const reason = (error as TRPCClientError<AppRouter>).data?.reason ?? null;
+      return { authorised: false, reason: reason as CheckRefusal | null };
+    }
+    throw error;
+  }
 }
 
 /** The reason an operator request was refused, typed from the router's error shape. */
