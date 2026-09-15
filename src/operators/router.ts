@@ -2,9 +2,11 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import type { OrganiserPrincipal } from "../auth/ports.js";
 import { RefusedRequest, SpecCodeError } from "../authority/errors.js";
-import { RefusalReasonCause, toTRPCError } from "../trpc/errors.js";
+import { isSpecErrorCode, RefusalReasonCause, toTRPCError } from "../trpc/errors.js";
 import { operatorProcedure, organiserProcedure, router } from "../trpc/trpc.js";
 import type {
+  AdmissionReport,
+  AdmissionReportInput,
   CheckInput,
   CreateOperatorInput,
   EnrolmentCode,
@@ -94,6 +96,38 @@ const grantInput = z
 
 const checkInput = z.object({ event: id32, gate }).strict();
 
+const specCode = z.string().max(64).refine(isSpecErrorCode, "expected a §10 code");
+
+const admissionSubmission = z.discriminatedUnion("outcome", [
+  z.object({ outcome: z.literal("settled"), cursor: z.string().max(256) }).strict(),
+  z.object({ outcome: z.literal("rejected"), errorCode: specCode }).strict(),
+  z.object({ outcome: z.literal("failed") }).strict(),
+]);
+
+const admissionReportInput = z
+  .object({
+    reportId: z.uuid(),
+    event: id32,
+    gate,
+    ticket: id32,
+    passId: z.string().regex(/^[0-9a-f]{32}$/, "expected 32 lower-case hex characters"),
+    verdict: z.discriminatedUnion("kind", [
+      z.object({ kind: z.literal("admitted"), submission: admissionSubmission }).strict(),
+      z
+        .object({
+          kind: z.literal("refused"),
+          reason: z
+            .string()
+            .regex(/^(?:ERR-[A-Z][A-Za-z]*|[a-z][a-z-]*)$/)
+            .max(64),
+        })
+        .strict(),
+    ]),
+    presentedAt: timestamp,
+    deviceClock: timestamp,
+  })
+  .strict();
+
 const grantIdInput = z.object({ grant: z.uuid() }).strict();
 
 const listGrantsInput = z
@@ -119,7 +153,8 @@ const requestOf = (ctx: {
  * `mine`. They change no ledger state (`AC-E5.1`).
  *
  * `check` (`T-024-03`) is what Iriguchi runs alongside `canAttend`, not in its
- * path (`AC-E5.2`).
+ * path (`AC-E5.2`). `reportAdmission` (`T-024-04`) records each verdict for
+ * `F-025`'s provisional-admission flags (`REQ-OP-3`).
  */
 export const operatorsRouter = router({
   create: organiserProcedure
@@ -165,6 +200,24 @@ export const operatorsRouter = router({
     .query(
       ({ ctx, input }): Promise<OperatorAuthorisation> =>
         mapped(() => ctx.services.operators.check(ctx.principal, input)),
+    ),
+  /**
+   * Records the signed-in operator's report of a verdict at a gate they were
+   * granted (`REQ-OP-3`): for an admission, how its submission ended. Sending the
+   * same `reportId` again answers the report first recorded. A gate never granted
+   * is `FORBIDDEN`, reason `not-granted`.
+   */
+  reportAdmission: operatorProcedure
+    .input(parser<AdmissionReportInput>(admissionReportInput))
+    .mutation(
+      ({ ctx, input }): Promise<AdmissionReport> =>
+        mapped(() =>
+          ctx.services.operators.reportAdmission(
+            ctx.principal,
+            { requestId: ctx.requestId, principal: ctx.principal },
+            input,
+          ),
+        ),
     ),
   grants: router({
     /**

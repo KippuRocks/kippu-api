@@ -15,6 +15,7 @@ import type {
   Operators,
   RevokedSessions,
 } from "./ports.js";
+import { type AdmissionReports, createAdmissionReports } from "./reports.js";
 
 /**
  * How long an enrolment code may be redeemed after it is issued. `F-020` plan
@@ -31,6 +32,8 @@ export interface OperatorsOptions {
   /** Reads an event's owner when a grant is made. Only ever read: grants write nothing to the ledger. */
   readonly ledger: Pick<KippuTicketto, "getEvent">;
   readonly authority: Pick<OrganiserAuthority, "account">;
+  /** Where admission reports are recorded; by default, this store. */
+  readonly reports?: Pick<AdmissionReports, "record">;
   readonly now?: () => Date;
 }
 
@@ -110,6 +113,8 @@ function unknownGrant(): RefusedRequest {
  * - An operator lists **their own** live and upcoming grants, and **checks**
  *   whether they may admit at a gate now (`T-024-03`): one indexed read, never
  *   cached, so revoking a grant or a session refuses the next check.
+ * - An operator **reports** each verdict (`T-024-04`), recorded for `F-025`
+ *   (`src/operators/reports.ts`).
  * - An operator of another organiser, or none, is `unknown-operator`; a grant of
  *   another organiser, or none, `unknown-grant`.
  */
@@ -118,6 +123,7 @@ export function createOperators({
   ledger,
   authority,
   now = () => new Date(),
+  reports = createAdmissionReports({ store, now }),
 }: OperatorsOptions): Operators {
   /** Fails unless the operator exists under the organiser. */
   async function assertOperator(
@@ -325,6 +331,10 @@ export function createOperators({
         throw refusedCheck("after-window");
       }
       throw refusedCheck(result.rows.length > 0 ? "grant-revoked" : "not-granted");
+    },
+
+    reportAdmission(operator, request, input) {
+      return reports.record(operator, request, input);
     },
   };
 }

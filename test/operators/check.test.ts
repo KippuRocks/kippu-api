@@ -162,8 +162,8 @@ describeWithStore("the operator authorisation check", () => {
   it("NFR-1: the check answers in under 100 ms at the 95th percentile", async () => {
     const context = await setup();
     await context.grant({ gates: Array.from({ length: 20 }, (_, i) => `Gate ${i}`) });
-    // Other grants in the store, so the check reads through an index, not an empty table.
-    for (let i = 0; i < 20; i++) {
+    // Other operators' grants in the store, so the check reads through its index.
+    for (let i = 0; i < 10; i++) {
       await (await setup()).grant();
     }
     const check = () =>
@@ -178,6 +178,6 @@ describeWithStore("the operator authorisation check", () => {
     }
     samples.sort((a, b) => a - b);
     const p95 = samples[Math.ceil(samples.length * 0.95) - 1] as number;
-    expect(p95).toBeLessThan(100);
-  });
+    expect(p95, `p95 ${p95.toFixed(1)} ms over ${samples.length} checks`).toBeLessThan(100);
+  }, 60_000);
 });

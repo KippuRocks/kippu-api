@@ -20,8 +20,11 @@ export type {
   SetSaleAssetInput,
   TicketClass,
 } from "../../../src/events/ports.js";
-/** Operator authorisation (`F-024`): operator accounts and grants, for Ibento and Iriguchi. */
+/** Operator authorisation (`F-024`): operator accounts, grants, the check and admission reports, for Ibento and Iriguchi. */
 export type {
+  AdmissionReport,
+  AdmissionReportInput,
+  AdmissionSubmission,
   CheckInput,
   CheckRefusal,
   CreateOperatorInput,
