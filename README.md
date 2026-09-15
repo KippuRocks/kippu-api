@@ -234,6 +234,22 @@ The `events` router is the organiser's. Every procedure acts for the signed-in o
   - Saifu links the guest's holder account (`auth.holder.*`) and redeems the token in that holder session. Redemption claims the invitation atomically and runs granted issuance for the invitation's organiser, audited against the holder's session: the ticket is issued once.
   - An unknown token is `NOT_FOUND`; a redeemed one `CONFLICT`. A refused issuance — quota, capacity, a ledger rule — reopens the invitation; one with no ledger verdict leaves it `failed`, since the ticket may exist.
 
+### Payments (`F-022`)
+
+Checkout takes payment through a provider's **hosted checkout** (`F-022` plan §5.4): Kippu creates a checkout for a hold, expiring with it; the buyer is redirected to the provider's page and pays there by card or PSE (never cash); the provider's HMAC-signed webhook is trusted only once the checkout, retrieved, is paid for the expected amount and hold. Kippu passes no payer details and sees no payment details. There is no authorise/capture split and no refund call: refunds are entitlements (plan §5.5).
+
+- `src/sales/payments/ports.ts` is the adapter: `createCheckout`, `retrieve`, `cancel`, `verifyWebhook`.
+- `src/sales/payments/test-provider.ts` is the deterministic, scriptable test provider (paying, expiry, failures, a payment racing a cancel, signed and forged webhooks). Development and tests use it.
+- `src/sales/payments/bloque.ts` is the Bloque adapter over `@bloque/payments`. It is tested against a mocked client only. **No Bloque account or key exists for this repository yet**; credentials are environment configuration, supplied for a deployment, and are unset in CI:
+
+| Variable | What it is |
+|---|---|
+| `KIPPU_BLOQUE_PAYMENTS_MODE` | `sandbox` or `production` |
+| `KIPPU_BLOQUE_PAYMENTS_SECRET_KEY` | Bloque's secret key: `sk_test_…` in sandbox, `sk_live_…` in production |
+| `KIPPU_BLOQUE_PAYMENTS_WEBHOOK_SECRET` | The secret Bloque signs webhooks with |
+
+All three or none. With none, the test provider is used in `development` and `test`; `staging` and `production` refuse to take payments without Bloque. Setting `KIPPU_TEST_BLOQUE_PAYMENTS_SECRET_KEY` and `KIPPU_TEST_BLOQUE_PAYMENTS_WEBHOOK_SECRET` (sandbox) runs the adapter's sandbox test, which creates, retrieves and cancels one checkout; it is skipped otherwise.
+
 ### Package releases
 
 Package versions are managed with Changesets (`pnpm changeset`). Nothing is
