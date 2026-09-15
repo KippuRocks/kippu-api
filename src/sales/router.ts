@@ -10,6 +10,9 @@ import {
   CheckoutError,
   type CheckoutFailure,
   type CheckoutTokenInput,
+  type ConfirmLinkInput,
+  type HandoffLink,
+  type HandoffTokenInput,
   type HoldOutcome,
 } from "./ports.js";
 
@@ -32,6 +35,9 @@ const TRANSPORT_CODE: Record<CheckoutFailure, TRPCError["code"]> = {
   "linked-to-another-account": "CONFLICT",
   "account-required": "PRECONDITION_FAILED",
   "hold-ended": "CONFLICT",
+  "link-unconfirmed": "PRECONDITION_FAILED",
+  "not-pairing": "PRECONDITION_FAILED",
+  "pairing-code-mismatch": "CONFLICT",
 };
 
 /**
@@ -75,17 +81,26 @@ const beginCheckoutInput = z
   })
   .strict();
 
-const tokenInput = z
-  .object({ token: z.string().regex(/^[A-Za-z0-9_-]{43}$/, "expected a checkout token") })
+const token = z.string().regex(/^[A-Za-z0-9_-]{43}$/, "expected a checkout token");
+
+const tokenInput = z.object({ token }).strict();
+
+const handoffTokenInput = z.object({ handoffToken: token }).strict();
+
+const confirmLinkInput = z
+  .object({ token, pairingCode: z.string().regex(/^[0-9]{6}$/, "expected a 6-digit code") })
   .strict();
 
 /**
  * Checkout sessions (`F-022` plan §5.1). Ichiba begins a checkout for what the
- * buyer picked. It proceeds once a holder account is linked (`AC-B4.1`): at once
- * when the caller has a holder session, and otherwise through a Saifu handoff —
- * Ichiba passes the handoff's token to Saifu, which links the holder's account
- * with `link`, while Ichiba reads the checkout with `get` until it is linked
- * (`AD-19` A).
+ * buyer picked. It proceeds once a holder account is linked and the link
+ * confirmed (`AC-B4.1`): at once when the caller has a holder session; otherwise
+ * through a Saifu handoff. Ichiba passes the handoff token to Saifu, which links
+ * the holder's account with `link` and shows a pairing code; Ichiba reads the
+ * checkout with `get`, shows the same code, and the buyer confirms the match
+ * with `confirmLink` — or discards the link with `discardLink`, which replaces
+ * the handoff token (`AD-19` A, handoff pairing). A checkout with no hold
+ * expires an hour after it began, and is then `NOT_FOUND`.
  */
 const checkoutRouter = router({
   /**
@@ -113,16 +128,51 @@ const checkoutRouter = router({
       ({ ctx, input }): Promise<Checkout> => mapped(() => ctx.services.sales.checkout(input.token)),
     ),
   /**
-   * Links the signed-in holder's account to the checkout — Saifu's half of the
-   * handoff. Linking again with the same account changes nothing; a checkout
-   * linked to another account is refused with `CONFLICT`.
+   * Links the signed-in holder's account to the checkout a handoff token hands
+   * off — Saifu's half of the handoff — and answers with what is being bought and
+   * the pairing code to show. Linking again with the same account changes
+   * nothing; a checkout linked to another account is refused with `CONFLICT`.
+   * The checkout page's own token links nothing: it is `NOT_FOUND` here.
    */
   link: holderProcedure
+    .input(parser<HandoffTokenInput>(handoffTokenInput))
+    .mutation(
+      ({ ctx, input }): Promise<HandoffLink> =>
+        mapped(() =>
+          ctx.services.sales.linkCheckout(
+            { requestId: ctx.requestId, principal: ctx.principal },
+            input.handoffToken,
+          ),
+        ),
+    ),
+  /**
+   * The buyer confirms, on the checkout page, that Saifu shows the same pairing
+   * code. `CONFLICT` for another code; `PRECONDITION_FAILED` with no link.
+   * Confirming a confirmed link again changes nothing.
+   */
+  confirmLink: publicProcedure
+    .input(parser<ConfirmLinkInput>(confirmLinkInput))
+    .mutation(
+      ({ ctx, input }): Promise<Checkout> =>
+        mapped(() =>
+          ctx.services.sales.confirmLink(
+            { requestId: ctx.requestId, principal: ctx.principal },
+            input.token,
+            input.pairingCode,
+          ),
+        ),
+    ),
+  /**
+   * The buyer discards an unconfirmed link — the codes did not match. The
+   * checkout is handed off again, with a new handoff token. `PRECONDITION_FAILED`
+   * with no unconfirmed link.
+   */
+  discardLink: publicProcedure
     .input(parser<CheckoutTokenInput>(tokenInput))
     .mutation(
       ({ ctx, input }): Promise<Checkout> =>
         mapped(() =>
-          ctx.services.sales.linkCheckout(
+          ctx.services.sales.discardLink(
             { requestId: ctx.requestId, principal: ctx.principal },
             input.token,
           ),
@@ -133,8 +183,8 @@ const checkoutRouter = router({
    * counted, in one transaction, against the event's capacity, the class's quota
    * and the seat; when any is exhausted the answer is `refused`, with the reason
    * — `sold-out`, `class-sold-out` or `seat-taken` — for the buyer to see before
-   * paying (`AC-B4.4`). A checkout with no holder account yet is
-   * `PRECONDITION_FAILED`; one whose hold lapsed or was released is `CONFLICT`.
+   * paying (`AC-B4.4`). A checkout with no holder account, or an unconfirmed
+   * link, is `PRECONDITION_FAILED`; one whose hold lapsed or was released is `CONFLICT`.
    * Asking again while the hold is outstanding answers with the same hold.
    */
   hold: publicProcedure
