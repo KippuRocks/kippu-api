@@ -59,6 +59,11 @@ export interface ReadsOptions {
    * default window. Defaults to ledger-rules' own maximum.
    */
   readonly maxPassWindow?: number;
+  /**
+   * How long after `notAfter` the ledger may still record a pass, in ms
+   * (`ledgerLimits`), for reconciling failed submissions. Defaults to ledger-rules'.
+   */
+  readonly maxRecordingLag?: number;
   /** Admission reports from gates (`F-024`), for flags; defaults to the store's. */
   readonly admissionReports?: Pick<AdmissionReports, "list">;
 }
@@ -95,7 +100,11 @@ export function createReads(options: ReadsOptions): Reads {
   const { store, freshness, storage, authority } = options;
   const origin = new URL(options.publicUrl ?? METADATA_ORIGIN).origin;
   const queries = options.queries ?? createDerivedQueries(store);
-  const defaultWindow = defaultPassWindow(options.maxPassWindow ?? ledgerLimits().maxPassWindow);
+  const limits = {
+    maxPassWindow: options.maxPassWindow ?? ledgerLimits().maxPassWindow,
+    maxRecordingLag: options.maxRecordingLag ?? ledgerLimits().maxRecordingLag,
+  };
+  const defaultWindow = defaultPassWindow(limits.maxPassWindow);
   const admissionReports = options.admissionReports ?? createAdmissionReports({ store });
 
   const document = async (locator: string | null): Promise<Document | null> => {
@@ -202,6 +211,7 @@ export function createReads(options: ReadsOptions): Reads {
         admissionReports,
         queries,
         () => freshness.current(),
+        limits,
         organiserId,
         event,
       );

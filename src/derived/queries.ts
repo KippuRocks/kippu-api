@@ -8,6 +8,7 @@ import type {
   EventId,
   EventStatus,
   Event as LedgerEvent,
+  PassId,
   Placement,
   Position,
   Provenance,
@@ -96,8 +97,40 @@ export interface DerivedQueries {
     from: Timestamp,
     until: Timestamp,
   ): Promise<DerivedRead<readonly Projected<Transfer>[]>>;
+  /** A pass the ledger recorded as consumed for `ticket`, by its id; `null` when the copy holds none. */
+  consumedPass(
+    ticket: TicketId,
+    pass: PassId,
+  ): Promise<DerivedRead<Projected<ConsumedPass> | null>>;
   /** Every credential registered to `account`, in registration order. */
   credentials(account: AccountId): Promise<DerivedRead<readonly Projected<RegisteredCredential>[]>>;
+}
+
+/** An access pass the ledger recorded, and so consumed (`INV-6`). */
+export interface ConsumedPass {
+  readonly event: EventId;
+  readonly ticket: TicketId;
+  readonly pass: PassId;
+  readonly holder: AccountId;
+  readonly notBefore: Timestamp;
+  readonly notAfter: Timestamp;
+  /** As the submitter claimed it. */
+  readonly presentedAt: Timestamp;
+  /** By the ledger's clock. */
+  readonly recordedAt: Timestamp;
+}
+
+interface ConsumedPassRow {
+  id: string;
+  ticket_id: string;
+  pass_id: string;
+  event_id: string;
+  holder: string;
+  not_before: string;
+  not_after: string;
+  presented_at: string;
+  recorded_at: string;
+  sequence: string;
 }
 
 /** A transfer the ledger recorded. */
@@ -344,6 +377,36 @@ export function createDerivedQueries(store: Store): DerivedQueries {
           event: eventOf(row),
           position: { created: int(row.created), id: row.id as EventId },
         })),
+        freshness,
+      };
+    },
+    async consumedPass(ticket, pass) {
+      const { rows, freshness } = await read<ConsumedPassRow>(
+        store,
+        `SELECT head.*, p.pass_id AS id, p.ticket_id, p.pass_id, p.event_id, p.holder, p.not_before,
+           p.not_after, p.presented_at, p.recorded_at, p.sequence
+         FROM head
+         LEFT JOIN derived_passes p ON p.ticket_id = $1 AND p.pass_id = $2`,
+        [ticket, pass],
+      );
+      const row = rows[0];
+      return {
+        result:
+          row === undefined
+            ? null
+            : projected(
+                {
+                  event: row.event_id as EventId,
+                  ticket: row.ticket_id as TicketId,
+                  pass: row.pass_id as PassId,
+                  holder: row.holder as AccountId,
+                  notBefore: int(row.not_before),
+                  notAfter: int(row.not_after),
+                  presentedAt: int(row.presented_at),
+                  recordedAt: int(row.recorded_at),
+                },
+                row.sequence,
+              ),
         freshness,
       };
     },

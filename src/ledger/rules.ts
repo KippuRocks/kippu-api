@@ -1,4 +1,8 @@
-import { DEFAULT_MAX_PASS_WINDOW, type RulesConfig } from "@ticketto/ledger-rules";
+import {
+  DEFAULT_MAX_PASS_WINDOW,
+  DEFAULT_MAX_RECORDING_LAG,
+  type RulesConfig,
+} from "@ticketto/ledger-rules";
 
 /**
  * The rules configuration the server's ledger runs with (`F-008` plan §5.2).
@@ -13,9 +17,17 @@ export const LEDGER_RULES_CONFIG: RulesConfig = {};
 export interface LedgerLimits {
   /** The longest pass window the ledger accepts, in milliseconds (`T-008-17`). */
   readonly maxPassWindow: number;
+  /**
+   * How long after a pass's `notAfter` the ledger may still record it, in
+   * milliseconds (`T-008-10`): past that, an unrecorded pass never will be.
+   */
+  readonly maxRecordingLag: number;
 }
 
 /** The limits `config` sets, with the rules' defaults for any it leaves out. */
 export function ledgerLimits(config: RulesConfig = LEDGER_RULES_CONFIG): LedgerLimits {
-  return { maxPassWindow: config.maxPassWindow ?? DEFAULT_MAX_PASS_WINDOW };
+  return {
+    maxPassWindow: config.maxPassWindow ?? DEFAULT_MAX_PASS_WINDOW,
+    maxRecordingLag: config.maxRecordingLag ?? DEFAULT_MAX_RECORDING_LAG,
+  };
 }

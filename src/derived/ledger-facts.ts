@@ -278,6 +278,29 @@ async function applyAttendance(
            sequence = EXCLUDED.sequence`,
     [pass.ticket, record.event.id, record.recordedAt, sequence],
   );
+  if (record.presentedAt === null) {
+    throw new UnprojectableRecordError(record, "an access pass record carries no presentedAt");
+  }
+  // The pass consumed (INV-6), for reconciling admission reports (REQ-OP-3).
+  await exactlyOne(
+    tx,
+    record,
+    `INSERT INTO derived_passes
+       (ticket_id, pass_id, event_id, holder, not_before, not_after, presented_at, recorded_at,
+        sequence)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+    [
+      pass.ticket,
+      pass.id,
+      record.event.id,
+      pass.holder,
+      pass.notBefore,
+      pass.notAfter,
+      record.presentedAt,
+      record.recordedAt,
+      sequence,
+    ],
+  );
 }
 
 function zonesJson(zones: readonly Zone[]): string {

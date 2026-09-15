@@ -85,7 +85,8 @@ describeWithStore("admission reports", () => {
     const passId = hex(16);
 
     // The same pass admitted at two gates: the ledger records one and refuses the other.
-    const first = admitted(event, { ticket, passId });
+    const holder = hex(32);
+    const first = admitted(event, { ticket, passId, holder });
     const second = admitted(event, {
       gate: "South door",
       ticket,

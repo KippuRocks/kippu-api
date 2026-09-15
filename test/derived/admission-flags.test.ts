@@ -1,10 +1,14 @@
 import { randomBytes, randomUUID } from "node:crypto";
+import { producePass } from "@ticketto/profile-v0";
+import { simulatedWebAuthnSigner } from "@ticketto/profile-v0/testing";
 import type {
   AccountId,
   Authorisation,
   ClassId,
   Discriminator,
   OperationId,
+  PassId,
+  TicketId,
   ZoneId,
 } from "@ticketto/sdk";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
@@ -13,8 +17,10 @@ import { GATE_CLOCK_TOLERANCE_MS } from "../../src/derived/admission-flags.js";
 import { createFreshness, type Freshness } from "../../src/derived/freshness.js";
 import { ledgerFactsProjection } from "../../src/derived/ledger-facts.js";
 import type { AdmissionFlag } from "../../src/derived/ports.js";
+import { createDerivedQueries } from "../../src/derived/queries.js";
 import { createDerivedReader } from "../../src/derived/reader.js";
 import { createReads } from "../../src/derived/reads.js";
+import { ledgerLimits } from "../../src/ledger/rules.js";
 import type { AdmissionReportInput } from "../../src/operators/ports.js";
 import type { Context } from "../../src/trpc/context.js";
 import { appRouter } from "../../src/trpc/router.js";
@@ -97,7 +103,7 @@ describeWithStore("provisional-admission flags", () => {
   }
 
   /** An event with one unseated zone, and a granted ticket in it, on backend-memory. */
-  async function eventWithTicket(organiserId: string) {
+  async function eventWithTicket(organiserId: string, holder = hex(32) as AccountId) {
     const request = {
       requestId: `req-${randomUUID()}`,
       principal: { kind: "organiser", organiserId, sessionId: randomUUID() },
@@ -112,7 +118,6 @@ describeWithStore("provisional-admission flags", () => {
       }),
     );
     expect(await created.submission).toMatchObject({ ok: true });
-    const holder = hex(32) as AccountId;
     const issued = await harness.authority.relay(organiserId, request, (signer) =>
       harness.ledger.issueTicket(signer, {
         event: created.id,
@@ -169,10 +174,38 @@ describeWithStore("provisional-admission flags", () => {
       passId: passAtTwoGates,
       verdict: rejected("ERR-PassReplayed"),
     });
-    // A transfer recorded between the verdict and the recording.
+    // A transfer away from the pass's holder, recorded after the pass was presented.
     const presentedBeforeTransfer = now - 1500;
+    const transferAt = presentedBeforeTransfer + 500;
     const invalidAfterTransfer = report(event, "North door", {
       ticket,
+      holder,
+      presentedAt: presentedBeforeTransfer,
+      verdict: rejected("ERR-InvalidPass"),
+    });
+    // The transfer's ledger time is 9 s before the claimed presentation: within the gate tolerance.
+    const invalidWithinTolerance = report(event, "North door", {
+      ticket,
+      holder,
+      presentedAt: transferAt + 9_000,
+      verdict: rejected("ERR-InvalidPass"),
+    });
+    // Not explained by that transfer: presented more than 10 s after it was recorded; a
+    // report carrying no holder; a pass of another holder than the one the ticket left.
+    const invalidTransferTooEarly = report(event, "North door", {
+      ticket,
+      holder,
+      presentedAt: transferAt + GATE_CLOCK_TOLERANCE_MS + 1,
+      verdict: rejected("ERR-InvalidPass"),
+    });
+    const invalidWithoutHolder = report(event, "North door", {
+      ticket,
+      presentedAt: presentedBeforeTransfer,
+      verdict: rejected("ERR-InvalidPass"),
+    });
+    const invalidOtherHolder = report(event, "North door", {
+      ticket,
+      holder: hex(32),
       presentedAt: presentedBeforeTransfer,
       verdict: rejected("ERR-InvalidPass"),
     });
@@ -204,6 +237,10 @@ describeWithStore("provisional-admission flags", () => {
     await south.operators.reportAdmission.mutate(replayed);
     for (const input of [
       invalidAfterTransfer,
+      invalidWithinTolerance,
+      invalidTransferTooEarly,
+      invalidWithoutHolder,
+      invalidOtherHolder,
       invalidWithoutTransfer,
       expiredWithinTolerance,
       fine,
@@ -233,7 +270,7 @@ describeWithStore("provisional-admission flags", () => {
 
     const receiver = hex(32) as AccountId;
     scripted.append({
-      recordedAt: presentedBeforeTransfer + 500,
+      recordedAt: transferAt,
       event: { id: event, sequence: prefix.filter((record) => record.event?.id === event).length },
       entry: {
         command: {
@@ -262,8 +299,19 @@ describeWithStore("provisional-admission flags", () => {
     expect(byReport(flags, invalidAfterTransfer.reportId)).toMatchObject({
       cause: "transfer-before-recording",
       refusal: { errorCode: "ERR-InvalidPass" },
-      transfers: [{ from: holder, to: receiver, recordedAt: presentedBeforeTransfer + 500 }],
+      transfers: [{ from: holder, to: receiver, recordedAt: transferAt }],
     });
+    expect(byReport(flags, invalidWithinTolerance.reportId)).toMatchObject({
+      cause: "transfer-before-recording",
+      transfers: [{ from: holder, to: receiver }],
+    });
+    for (const unexplained of [invalidTransferTooEarly, invalidWithoutHolder, invalidOtherHolder]) {
+      expect(byReport(flags, unexplained.reportId)).toMatchObject({
+        cause: "unexplained",
+        refusal: { errorCode: "ERR-InvalidPass" },
+        transfers: [],
+      });
+    }
     expect(byReport(flags, expiredFromDriftingGate.reportId)).toMatchObject({
       cause: "gate-clock-outside-tolerance",
       refusal: { errorCode: "ERR-PassExpired" },
@@ -287,6 +335,10 @@ describeWithStore("provisional-admission flags", () => {
     expect(flags.map((flag) => flag.reportId)).toEqual([
       replayed.reportId,
       invalidAfterTransfer.reportId,
+      invalidWithinTolerance.reportId,
+      invalidTransferTooEarly.reportId,
+      invalidWithoutHolder.reportId,
+      invalidOtherHolder.reportId,
       invalidWithoutTransfer.reportId,
       expiredWithinTolerance.reportId,
       expiredFromDriftingGate.reportId,
@@ -299,5 +351,96 @@ describeWithStore("provisional-admission flags", () => {
     // Another organiser reads none of these reports.
     const stranger = await harness.organiser();
     expect((await flagsFor(stranger, event)).flags).toEqual([]);
+  });
+
+  it("REQ-OP-3: a failed submission never recorded is flagged after its window; one recorded later is not", async () => {
+    const organiser = await harness.organiser();
+    const holder = simulatedWebAuthnSigner({ rpId: "holder.kippu.example" });
+    const registered = await harness.ledger.registerCredential(holder.signer, {
+      account: holder.signer.account,
+      registration: holder.registration,
+    });
+    expect(registered).toMatchObject({ ok: true });
+    const { event, ticket } = await eventWithTicket(organiser.organiserId, holder.signer.account);
+    const north = await device(organiser, event, "North door");
+    const { maxPassWindow, maxRecordingLag } = ledgerLimits();
+    const failedSubmission: AdmissionReportInput["verdict"] = {
+      kind: "admitted",
+      submission: { outcome: "failed" },
+    };
+
+    // Presented now, its submission failed at the gate; recorded later by a retry.
+    const now = Date.now();
+    const pass = await producePass(
+      { ticket: ticket as TicketId, holder: holder.signer.account, notBefore: now - 5_000 },
+      holder.signer,
+    );
+    const recordedLater = report(event, "North door", {
+      ticket,
+      passId: pass.pass.id,
+      presentedAt: now,
+      verdict: failedSubmission,
+    });
+    // Presented long enough ago that no ledger could still record it, and never recorded.
+    const longAgo = now - (maxPassWindow + maxRecordingLag + 60_000);
+    const neverRecorded = report(event, "North door", {
+      ticket,
+      passId: hex(16),
+      presentedAt: longAgo,
+      verdict: failedSubmission,
+    });
+    // Presented now and not recorded yet: it still could be.
+    const stillPending = report(event, "North door", {
+      ticket,
+      passId: hex(16),
+      presentedAt: now,
+      verdict: failedSubmission,
+    });
+    for (const input of [recordedLater, neverRecorded, stillPending]) {
+      await north.operators.reportAdmission.mutate(input);
+    }
+
+    const reader = createDerivedReader({
+      store: harness.database.store,
+      log: harness.ledger.log,
+      projections: [ledgerFactsProjection(harness.ledger)],
+      onError: () => {},
+    });
+    await reader.catchUp();
+
+    // Before the retry: the old one is past its deadline by the ledger's clock; neither recent one is.
+    const before = await flagsFor(organiser, event);
+    expect(before.flags.map((flag) => [flag.reportId, flag.cause])).toEqual([
+      [neverRecorded.reportId, "not-recorded"],
+    ]);
+    expect(before.flags[0]).toMatchObject({
+      refusal: null,
+      recordingDeadline: longAgo + maxPassWindow + maxRecordingLag,
+    });
+    expect((before.freshness.lastRecordedAt ?? 0) > longAgo + maxPassWindow + maxRecordingLag).toBe(
+      true,
+    );
+
+    // The retry reaches the ledger, which records the pass after the report arrived.
+    const retried = await harness.ledger.submitAccessPass(pass, { presentedAt: now });
+    expect(retried).toMatchObject({ ok: true, value: { operationId: pass.pass.id } });
+    await reader.catchUp();
+
+    // The copy holds the consumed pass, with its window and the ledger's recording time.
+    const consumed = await createDerivedQueries(harness.database.store).consumedPass(
+      ticket as TicketId,
+      pass.pass.id as PassId,
+    );
+    expect(consumed.result?.value).toMatchObject({
+      holder: holder.signer.account,
+      notBefore: pass.pass.notBefore,
+      notAfter: pass.pass.notAfter,
+      presentedAt: now,
+    });
+
+    const after = await flagsFor(organiser, event);
+    expect(after.flags.map((flag) => flag.reportId)).toEqual([neverRecorded.reportId]);
+    expect(after.flags.map((flag) => flag.reportId)).not.toContain(recordedLater.reportId);
+    expect(after.flags.map((flag) => flag.reportId)).not.toContain(stillPending.reportId);
   });
 });
