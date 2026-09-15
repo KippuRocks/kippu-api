@@ -80,6 +80,32 @@ describeWithStore("creating an event", () => {
     expect(harness.sponsored).toEqual(expect.arrayContaining(operations));
   });
 
+  it("AC-A1.4: an organiser with no ledger balance creates an event, and Kippu sponsors it regardless", async () => {
+    // REQ-SP-1a: no user of Kippu ever needs to hold a ledger balance. Nothing
+    // in this fixture, the store's schema, or the SDK ever funds or tops up an
+    // account — the organiser's ledger account is provisioned and used with no
+    // balance of any kind, and no funding step precedes the write below.
+    const organiser = await harness.organiser();
+
+    const { event } = await organiser.client.events.create.mutate({
+      zones: [{ id: randomId(), kind: "Unseated" }],
+      capacity: null,
+    });
+
+    // The event exists regardless of the organiser holding no balance.
+    expect(await harness.ledger.getEvent(event as EventId)).toMatchObject({
+      ok: true,
+      value: { status: "Active" },
+    });
+
+    // Kippu, not the organiser, sponsors every ledger write this required: the
+    // account's self-registration and the event's creation (REQ-SP-1).
+    const operations = await operationsOf(organiser.organiserId);
+    expect(operations).toHaveLength(2);
+    await expectEveryRelayedWriteAudited(harness.audit, operations);
+    expect(harness.sponsored).toEqual(expect.arrayContaining(operations));
+  });
+
   it("AC-A1.2: an event created with no capacity leaves issuance unbounded", async () => {
     const organiser = await harness.organiser();
 
