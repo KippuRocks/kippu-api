@@ -1,6 +1,7 @@
 import { loadConfig } from "./config.js";
 import { loadMetadataConfig, loadMetadataPublicUrl } from "./metadata/config.js";
 import { createS3MetadataStorage } from "./metadata/storage.js";
+import { createS3ProofArtefactStorage, loadProofStorageConfig } from "./proofs/artefacts.js";
 import { loadPaymentsConfig } from "./sales/payments/config.js";
 import { paymentProviderFor } from "./sales/payments/provider.js";
 import { assertMigrated } from "./store/migrate.js";
@@ -18,6 +19,11 @@ try {
     process.env.KIPPU_METADATA_S3_BUCKET === undefined
       ? undefined
       : createS3MetadataStorage(loadMetadataConfig().storage);
+  // Capacity proof artefacts live in a private bucket of their own (T-021-08, NFR-6).
+  const proofStorage =
+    process.env.KIPPU_PROOFS_S3_BUCKET === undefined
+      ? undefined
+      : createS3ProofArtefactStorage(loadProofStorageConfig());
   // Staging reaches the ledger service through binding-offchain (T-023-08).
   const ledgerBackend = await connectLedgerBackend(config);
   server = createServer(
@@ -27,6 +33,7 @@ try {
     {
       metadataPublicUrl: loadMetadataPublicUrl(),
       ...(storage === undefined ? {} : { metadataStorage: storage }),
+      ...(proofStorage === undefined ? {} : { proofStorage }),
       ...(ledgerBackend === undefined ? {} : { ledgerBackend }),
       // Bloque's hosted checkout when its credentials are set; the test provider otherwise (F-022).
       payments: { provider: paymentProviderFor(payments), publicUrl: payments.publicUrl },
@@ -36,6 +43,7 @@ try {
     {
       ledgerEnvironment: config.ledgerEnvironment,
       metadataStorage: storage !== undefined,
+      proofStorage: proofStorage !== undefined,
       sponsor: config.sponsorRelayUrl ?? "development sponsor",
       ledgerService: config.ledgerServiceUrl ?? "backend-memory",
       payments: payments.provider,

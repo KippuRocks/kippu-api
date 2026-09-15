@@ -48,6 +48,17 @@ export type {
   OperatorRefusal,
   RevokedSessions,
 } from "../../../src/operators/ports.js";
+/** Capacity proofs (`T-021-08`): increases requested with an artefact, and Kippu's review queue. */
+export type {
+  CapacityProofRequest,
+  CapacityProofRequestInput,
+  CapacityProofStatus,
+  ProofArtefact,
+  ProofArtefactInput,
+  ProofArtefactMediaType,
+  RequestCapacityIncreaseInput,
+  ReviewedCapacityProofRequest,
+} from "../../../src/proofs/ports.js";
 /** Kippu operations reviewers (`T-021-16`): enrolment and sign-in, for Ibento's review queue. */
 export type {
   Reviewer,

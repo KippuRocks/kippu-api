@@ -43,6 +43,7 @@ services:
         - >-
           mc alias set local http://127.0.0.1:9000 kippu_metadata kippu_metadata_local >/dev/null
           && mc mb --ignore-existing local/kippu-metadata >/dev/null
+          && mc mb --ignore-existing local/kippu-proofs >/dev/null
       interval: 2s
       timeout: 5s
       retries: 30

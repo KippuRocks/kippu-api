@@ -58,6 +58,7 @@ const services: Services = {
   sales: new Proxy({} as Services["sales"], { get: () => refusing }),
   operators: new Proxy({} as Services["operators"], { get: () => refusing }),
   reviewers: new Proxy({} as Services["reviewers"], { get: () => refusing }),
+  capacityProofs: new Proxy({} as Services["capacityProofs"], { get: () => refusing }),
 };
 
 const anonymous: Context = { requestId: "test", session: null, principal: ANONYMOUS, services };

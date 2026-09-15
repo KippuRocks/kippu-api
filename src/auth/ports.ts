@@ -2,6 +2,7 @@ import type { Reads } from "../derived/ports.js";
 import type { Events } from "../events/ports.js";
 import type { Metadata } from "../metadata/ports.js";
 import type { Operators } from "../operators/ports.js";
+import type { CapacityProofs } from "../proofs/ports.js";
 import type { ReviewerAuth } from "../reviewers/ports.js";
 import type { Sales } from "../sales/ports.js";
 import type {
@@ -253,4 +254,5 @@ export interface Services {
   readonly sales: Sales;
   readonly operators: Operators;
   readonly reviewers: ReviewerAuth;
+  readonly capacityProofs: CapacityProofs;
 }

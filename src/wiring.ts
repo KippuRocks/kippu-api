@@ -24,6 +24,8 @@ import { createMetadataDocuments } from "./metadata/documents.js";
 import type { MetadataStorage } from "./metadata/storage.js";
 import { type AdmissionReports, createAdmissionReports } from "./operators/reports.js";
 import { createOperators } from "./operators/service.js";
+import { NO_PROOF_ARTEFACT_STORAGE, type ProofArtefactStorage } from "./proofs/artefacts.js";
+import { createCapacityProofs } from "./proofs/service.js";
 import { createReviewers } from "./reviewers/service.js";
 import { type LapseSweeper, lapseSweeper } from "./sales/holds.js";
 import type { OrganiserSaleActions } from "./sales/organiser-actions.js";
@@ -87,6 +89,12 @@ export interface WiringOptions {
    */
   readonly metadataStorage?: MetadataStorage;
   /**
+   * Private object storage for capacity proof artefacts (`T-021-08`), a bucket other
+   * than the metadata bucket. Without it, requests for a capacity increase and
+   * artefact reads fail; the review queue and decisions are served.
+   */
+  readonly proofStorage?: ProofArtefactStorage;
+  /**
    * The ledger backend in `staging`: `binding-offchain`, connected to the ledger
    * service with {@link connectLedgerBackend}. Ignored in `development` and `test`.
    */
@@ -107,7 +115,7 @@ export interface DomainServices {
   /** Metadata editing is absent without object storage; `buildApp` fills it with a failing service. */
   readonly services: Pick<
     Services,
-    "auth" | "events" | "derived" | "sales" | "operators" | "reviewers"
+    "auth" | "events" | "derived" | "sales" | "operators" | "reviewers" | "capacityProofs"
   > &
     Partial<Pick<Services, "metadata">>;
   readonly ledger: KippuTicketto;
@@ -261,7 +269,13 @@ export function createDomainServices(
   const admissionReports = createAdmissionReports({ store });
   const operators = createOperators({ store, ledger, authority, reports: admissionReports });
   const reviewers = createReviewers({ store, relyingParty: config.login });
-  const base = { auth, events, derived, sales, operators, reviewers };
+  const capacityProofs = createCapacityProofs({
+    store,
+    authority,
+    ledger,
+    storage: options.proofStorage ?? NO_PROOF_ARTEFACT_STORAGE,
+  });
+  const base = { auth, events, derived, sales, operators, reviewers, capacityProofs };
   const services =
     options.metadataStorage === undefined
       ? base

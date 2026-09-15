@@ -2,6 +2,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import type { HolderPrincipal, OrganiserPrincipal } from "../auth/ports.js";
 import { RefusedRequest, SpecCodeError } from "../authority/errors.js";
+import { organiserCapacityProofsRouter } from "../proofs/router.js";
 import { RefusalReasonCause, toTRPCError } from "../trpc/errors.js";
 import { holderProcedure, organiserProcedure, router } from "../trpc/trpc.js";
 import type {
@@ -436,7 +437,7 @@ export const eventsRouter = router({
    * outstanding holds, never below (`ERR-CapacityBelowIssuance`, with
    * `error.data.reason` `held` when the holds make the difference; `REQ-HD-4`).
    * An increase is refused with `ERR-CapacityProofRequired`: it needs an approved
-   * capacity proof. The ledger's verdict — `ERR-EventSealed`, say — is passed on.
+   * capacity proof (`capacityProofs.request`). The ledger's verdict — `ERR-EventSealed`, say — is passed on.
    */
   decreaseCapacity: organiserProcedure
     .input(parser<DecreaseCapacityInput>(decreaseCapacityInput))
@@ -446,6 +447,11 @@ export const eventsRouter = router({
           ctx.services.events.decreaseCapacity(ctx.principal.organiserId, requestOf(ctx), input),
         ),
     ),
+  /**
+   * Capacity increases (`T-021-08`): a request with an artefact, reviewed by Kippu
+   * operations. Nothing reaches the ledger until a reviewer approves it.
+   */
+  capacityProofs: organiserCapacityProofsRouter,
   /**
    * The event's pass window, in milliseconds, with the bounds it can be set within
    * (`NFR-5`). 60 seconds until the organiser sets one.
