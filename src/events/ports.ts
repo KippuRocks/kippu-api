@@ -108,6 +108,21 @@ export interface FinishSchedule {
   readonly errorCode: string | null;
 }
 
+/** A restriction to remove from a ticket of the organiser's event (`T-021-10`). */
+export interface RemoveRestrictionInput {
+  readonly event: string;
+  /** The `TicketId`: 64 lower-case hex characters. */
+  readonly ticket: string;
+  readonly restriction: "cannotResale" | "cannotTransfer";
+}
+
+/** A ticket's restrictions, as the ledger records them once one was removed. */
+export interface RestrictionRemoved extends Recorded {
+  readonly event: string;
+  readonly ticket: string;
+  readonly restrictions: TicketRestrictions;
+}
+
 /** An event's pass window to set (`T-021-15`). */
 export interface SetPassWindowInput {
   readonly event: string;
@@ -386,6 +401,16 @@ export interface Events {
     request: EventsRequest,
     input: SetSaleAssetInput,
   ): Promise<EventSaleAsset>;
+  /**
+   * Removes a restriction from a ticket of an event the organiser owns
+   * (`REQ-TK-6`). Removing `cannotResale` from a ticket that cannot be transferred
+   * removes both. No restriction can be added after issuance (`INV-10`).
+   */
+  removeRestriction(
+    organiserId: string,
+    request: EventsRequest,
+    input: RemoveRestrictionInput,
+  ): Promise<RestrictionRemoved>;
   /** Seals an event the organiser owns, after releasing its holds (`US-A4`, `REQ-HD-4`). */
   seal(organiserId: string, request: EventsRequest, input: EventInput): Promise<StatusChanged>;
   /**

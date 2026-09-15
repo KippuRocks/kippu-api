@@ -27,6 +27,8 @@ import type {
   Recorded,
   RedeemedInvitation,
   RedeemInvitationInput,
+  RemoveRestrictionInput,
+  RestrictionRemoved,
   ScheduleFinishInput,
   SeatPositions,
   SetClassPriceInput,
@@ -157,6 +159,10 @@ const defineClassInput = z
 
 const setSaleAssetInput = z.object({ event: id32, asset: saleAsset }).strict();
 
+const removeRestrictionInput = z
+  .object({ event: id32, ticket: id32, restriction: z.enum(["cannotResale", "cannotTransfer"]) })
+  .strict();
+
 const decreaseCapacityInput = z.object({ event: id32, capacity: count }).strict();
 
 const scheduleFinishInput = z
@@ -256,6 +262,20 @@ const classesRouter = router({
 
 /** Granted tickets (`US-B2`, `REQ-TC-4`). */
 const ticketsRouter = router({
+  /**
+   * Frees a ticket of the organiser's event for transfer or resale (`REQ-TK-6`,
+   * `AC-B3.4`): only ever removes a restriction, never adds one (`INV-10`).
+   * Removing `cannotResale` from a ticket that cannot be transferred removes both
+   * (`REQ-TK-2`). Answers with the ticket's restrictions as the ledger records them.
+   */
+  removeRestriction: organiserProcedure
+    .input(parser<RemoveRestrictionInput>(removeRestrictionInput))
+    .mutation(
+      ({ ctx, input }): Promise<RestrictionRemoved> =>
+        mapped(() =>
+          ctx.services.events.removeRestriction(ctx.principal.organiserId, requestOf(ctx), input),
+        ),
+    ),
   /**
    * Issues a ticket from a granted class to a holder's account: free, with no
    * payment record of any kind. A seat must be one of its zone's canonical
