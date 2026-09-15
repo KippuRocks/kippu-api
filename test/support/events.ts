@@ -13,6 +13,7 @@ import {
 import { softwareOrganiserKms } from "../../src/authority/kms.js";
 import { createFreshness } from "../../src/derived/freshness.js";
 import { createEvents } from "../../src/events/service.js";
+import { ledgerLimits } from "../../src/ledger/rules.js";
 import { type KippuTicketto, makeTicketto } from "../../src/ledger/ticketto.js";
 import { createMetadataDocuments } from "../../src/metadata/documents.js";
 import type { MetadataStorage } from "../../src/metadata/storage.js";
@@ -121,7 +122,12 @@ export async function eventsHarness(options: EventsHarnessOptions = {}): Promise
       throw error;
     },
   });
-  const events = createEvents({ store: database.store, authority, ledger });
+  const events = createEvents({
+    store: database.store,
+    authority,
+    ledger,
+    maxPassWindow: ledgerLimits().maxPassWindow,
+  });
   const payments = createTestPaymentProvider();
   const freshness = createFreshness({ store: database.store, pollInterval: 50 });
   const salesOptions = (overrides: Partial<SalesOptions> = {}): SalesOptions => ({

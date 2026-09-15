@@ -13,6 +13,7 @@ import type {
   CreateInvitationInput,
   DefineClassInput,
   EventInput,
+  EventPassWindow,
   EventSaleAsset,
   EventsRequest,
   Invitation,
@@ -25,6 +26,7 @@ import type {
   RedeemInvitationInput,
   SeatPositions,
   SetClassPriceInput,
+  SetPassWindowInput,
   SetSaleAssetInput,
   TicketClass,
   ZoneInput,
@@ -149,6 +151,11 @@ const defineClassInput = z
   .strict();
 
 const setSaleAssetInput = z.object({ event: id32, asset: saleAsset }).strict();
+
+// Milliseconds; the bounds are checked by the service, whose maximum is the ledger's.
+const setPassWindowInput = z
+  .object({ event: id32, windowMs: z.number().int().positive().max(2_147_483_647) })
+  .strict();
 
 const setClassPriceInput = z
   .object({
@@ -325,6 +332,28 @@ export const eventsRouter = router({
       ({ ctx, input }): Promise<EventSaleAsset> =>
         mapped(() =>
           ctx.services.events.setSaleAsset(ctx.principal.organiserId, requestOf(ctx), input),
+        ),
+    ),
+  /**
+   * The event's pass window, in milliseconds, with the bounds it can be set within
+   * (`NFR-5`). 60 seconds until the organiser sets one.
+   */
+  passWindow: organiserProcedure
+    .input(parser<EventInput>(eventInput))
+    .query(
+      ({ ctx, input }): Promise<EventPassWindow> =>
+        mapped(() => ctx.services.events.passWindow(ctx.principal.organiserId, input)),
+    ),
+  /**
+   * Sets the event's pass window: between 10 seconds and the ledger's maximum pass
+   * window, or `BAD_REQUEST`. A Kippu setting, not a ledger fact.
+   */
+  setPassWindow: organiserProcedure
+    .input(parser<SetPassWindowInput>(setPassWindowInput))
+    .mutation(
+      ({ ctx, input }): Promise<EventPassWindow> =>
+        mapped(() =>
+          ctx.services.events.setPassWindow(ctx.principal.organiserId, requestOf(ctx), input),
         ),
     ),
   /** The event's sale asset, and whether it is fixed. */

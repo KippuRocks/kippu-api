@@ -17,6 +17,7 @@ import { createReads } from "./derived/reads.js";
 import { createEvents } from "./events/service.js";
 import { developmentSponsor } from "./ledger/development-sponsor.js";
 import { type ReceiptTracker, trackReceipts } from "./ledger/receipts.js";
+import { ledgerLimits } from "./ledger/rules.js";
 import { type KippuTicketto, makeTicketto } from "./ledger/ticketto.js";
 import { createMetadataDocuments } from "./metadata/documents.js";
 import type { MetadataStorage } from "./metadata/storage.js";
@@ -198,6 +199,7 @@ export function createDomainServices(
     store,
     authority,
     ledger,
+    maxPassWindow: ledgerLimits().maxPassWindow,
     ...(publicUrl === undefined ? {} : { metadataPublicUrl: publicUrl }),
   });
   const reader = createDerivedReader({

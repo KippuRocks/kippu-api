@@ -13,10 +13,12 @@
 export type {
   CreateEventInput,
   DefineClassInput,
+  EventPassWindow,
   EventSaleAsset,
   InvitationRefusal,
   SaleAsset,
   SetClassPriceInput,
+  SetPassWindowInput,
   SetSaleAssetInput,
   TicketClass,
 } from "../../../src/events/ports.js";
