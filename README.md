@@ -227,6 +227,10 @@ The `events` router is the organiser's. Every procedure acts for the signed-in o
   - The quota counts `granted_issuances` rows under a lock on the class, so concurrent issuances never exceed it. A ledger refusal frees its place; a submission with no verdict keeps it, since the ticket may exist.
   - Every other refusal is the ledger's, passed on: `ERR-CapacityExceeded`, `ERR-TicketIdExists`, `ERR-ZoneKindMismatch`, and so on.
   - Free means free at every layer (`REQ-TC-4`): the issuance writes its audit row and its issuance record, and no payment record of any kind.
+- **Invitations** (`events.invitations.create`, `.list`, `.redeem`) reach a guest who has no holder account yet (`F-021` plan §5.6).
+  - The organiser creates an invitation to a granted class at a placement, checked as issuance checks it, with an optional guest note that stays in Kippu (`NFR-6`). Its token — 32 random bytes, base64url — is returned once; `invitations` keeps only its SHA-256.
+  - Saifu links the guest's holder account (`auth.holder.*`) and redeems the token in that holder session. Redemption claims the invitation atomically and runs granted issuance for the invitation's organiser, audited against the holder's session: the ticket is issued once.
+  - An unknown token is `NOT_FOUND`; a redeemed one `CONFLICT`. A refused issuance — quota, capacity, a ledger rule — reopens the invitation; one with no ledger verdict leaves it `failed`, since the ticket may exist.
 
 ### Package releases
 

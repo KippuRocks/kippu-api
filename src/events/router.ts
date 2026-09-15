@@ -1,20 +1,26 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import type { OrganiserPrincipal } from "../auth/ports.js";
+import type { HolderPrincipal, OrganiserPrincipal } from "../auth/ports.js";
 import { RefusedRequest, SpecCodeError } from "../authority/errors.js";
 import { toTRPCError } from "../trpc/errors.js";
-import { organiserProcedure, router } from "../trpc/trpc.js";
+import { holderProcedure, organiserProcedure, router } from "../trpc/trpc.js";
 import type {
   AddSeatPositionsInput,
   AddZoneInput,
   CreatedEvent,
+  CreatedInvitation,
   CreateEventInput,
+  CreateInvitationInput,
   DefineClassInput,
   EventInput,
   EventsRequest,
+  Invitation,
   IssuedTicket,
   IssueGrantedInput,
+  ListInvitationsInput,
   Recorded,
+  RedeemedInvitation,
+  RedeemInvitationInput,
   SeatPositions,
   TicketClass,
   ZoneInput,
@@ -46,7 +52,7 @@ async function mapped<T>(work: () => Promise<T>): Promise<T> {
       throw toTRPCError(error);
     }
     if (error instanceof RefusedRequest) {
-      throw new TRPCError({ code: "BAD_REQUEST", message: error.message });
+      throw new TRPCError({ code: error.transport, message: error.message });
     }
     throw error;
   }
@@ -80,17 +86,35 @@ const addSeatPositionsInput = z
   .object({ event: id32, zone: id32, positions: z.array(designation).min(1).max(50_000) })
   .strict();
 
+const placementInput = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("Seated"), position: designation }).strict(),
+  z.object({ kind: z.literal("Unseated") }).strict(),
+]);
+
 const issueGrantedInput = z
   .object({
     event: id32,
     class: id32,
     zone: id32,
-    placement: z.discriminatedUnion("kind", [
-      z.object({ kind: z.literal("Seated"), position: designation }).strict(),
-      z.object({ kind: z.literal("Unseated") }).strict(),
-    ]),
+    placement: placementInput,
     holder: id32,
   })
+  .strict();
+
+const createInvitationInput = z
+  .object({
+    event: id32,
+    class: id32,
+    zone: id32,
+    placement: placementInput,
+    guest: z.string().min(1).max(200).nullable(),
+  })
+  .strict();
+
+const listInvitationsInput = z.object({ event: id32, class: id32.nullable() }).strict();
+
+const redeemInvitationInput = z
+  .object({ token: z.string().regex(/^[A-Za-z0-9_-]{43}$/, "expected an invitation token") })
   .strict();
 
 const createEventInput = z
@@ -115,7 +139,7 @@ const defineClassInput = z
 /** The request a procedure acts on behalf of, for the audit log (`NFR-7`). */
 const requestOf = (ctx: {
   readonly requestId: string;
-  readonly principal: OrganiserPrincipal;
+  readonly principal: OrganiserPrincipal | HolderPrincipal;
 }): EventsRequest => ({ requestId: ctx.requestId, principal: ctx.principal });
 
 /**
@@ -201,6 +225,44 @@ const ticketsRouter = router({
 });
 
 /**
+ * Invitations (`T-021-12`; `F-021` plan §5.6): a guest with no holder account yet
+ * is sent a link to Saifu, which links their account and redeems the token.
+ */
+const invitationsRouter = router({
+  /**
+   * Creates an invitation to a granted class, at a placement, with an optional
+   * guest note kept only in Kippu (`NFR-6`). Its token is returned this once.
+   */
+  create: organiserProcedure
+    .input(parser<CreateInvitationInput>(createInvitationInput))
+    .mutation(
+      ({ ctx, input }): Promise<CreatedInvitation> =>
+        mapped(() =>
+          ctx.services.events.createInvitation(ctx.principal.organiserId, requestOf(ctx), input),
+        ),
+    ),
+  /** An event's invitations — or one class's — with who redeemed each, oldest first. */
+  list: organiserProcedure
+    .input(parser<ListInvitationsInput>(listInvitationsInput))
+    .query(
+      ({ ctx, input }): Promise<readonly Invitation[]> =>
+        mapped(() => ctx.services.events.listInvitations(ctx.principal.organiserId, input)),
+    ),
+  /**
+   * Saifu redeems a token for the linked holder account: the class's ticket is
+   * issued to it, once. An unknown token is `NOT_FOUND`; a redeemed one `CONFLICT`.
+   */
+  redeem: holderProcedure
+    .input(parser<RedeemInvitationInput>(redeemInvitationInput))
+    .mutation(
+      ({ ctx, input }): Promise<RedeemedInvitation> =>
+        mapped(() =>
+          ctx.services.events.redeemInvitation(ctx.principal.account, requestOf(ctx), input),
+        ),
+    ),
+});
+
+/**
  * Events, zones, classes and granted issuance (`F-021`). Every procedure is the
  * organiser's: Kippu exercises their ledger authority for them (`REQ-OA-1`).
  */
@@ -221,4 +283,5 @@ export const eventsRouter = router({
   zones: zonesRouter,
   classes: classesRouter,
   tickets: ticketsRouter,
+  invitations: invitationsRouter,
 });

@@ -3,6 +3,7 @@ import { type Classes, createClasses } from "../classes/classes.js";
 import type { KippuTicketto } from "../ledger/ticketto.js";
 import type { Store } from "../store/store.js";
 import { createEventWith } from "./create-event.js";
+import { createInvitations, type Invitations } from "./invitations.js";
 import { issueGrantedWith } from "./issuance.js";
 import type { Events } from "./ports.js";
 import { createZones, type Zones } from "./zones.js";
@@ -20,21 +21,30 @@ export interface EventsOptions {
 }
 
 /** The `F-021` services behind the events router. */
-export function createEvents(
-  options: EventsOptions,
-): Events & { readonly classes: Classes; readonly zones: Zones } {
+export function createEvents(options: EventsOptions): Events & {
+  readonly classes: Classes;
+  readonly zones: Zones;
+  readonly invitations: Invitations;
+} {
   const classes = createClasses(options);
   const zones = createZones(options);
+  const issueGranted = issueGrantedWith({ ...options, classes, zones });
+  const invitations = createInvitations({ ...options, classes, zones, issueGranted });
   return {
     classes,
     zones,
+    invitations,
     createEvent: createEventWith(options),
     addZone: (organiserId, request, input) => zones.addZone(organiserId, request, input),
     removeZone: (organiserId, request, input) => zones.removeZone(organiserId, request, input),
     addSeatPositions: (organiserId, request, input) =>
       zones.addSeatPositions(organiserId, request, input),
     seatPositions: (organiserId, input) => zones.seatPositions(organiserId, input),
-    issueGranted: issueGrantedWith({ ...options, classes, zones }),
+    issueGranted,
+    createInvitation: (organiserId, request, input) =>
+      invitations.create(organiserId, request, input),
+    listInvitations: (organiserId, input) => invitations.list(organiserId, input),
+    redeemInvitation: (holder, request, input) => invitations.redeem(holder, request, input),
     defineClass: (organiserId, request, input) => classes.define(organiserId, request, input),
     listClasses: (organiserId, input) => classes.list(organiserId, input),
   };

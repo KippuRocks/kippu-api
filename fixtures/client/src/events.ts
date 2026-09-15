@@ -80,3 +80,23 @@ export async function classRejectedByTheCompiler(token: string, event: string): 
     quota: null,
   });
 }
+
+/** How Ibento invites a guest (`T-021-12`): the token is shown once, for the guest's link. */
+export async function inviteGuest(
+  token: string,
+  input: { event: string; class: string; zone: string; guest: string | null },
+): Promise<string> {
+  const created = await organiserClient(token).events.invitations.create.mutate({
+    ...input,
+    placement: { kind: "Unseated" },
+  });
+  return created.token;
+}
+
+/** How Saifu redeems an invitation in a holder session: it receives the ticket's id. */
+export async function redeemInvitation(holderToken: string, invitation: string): Promise<string> {
+  const { ticket } = await organiserClient(holderToken).events.invitations.redeem.mutate({
+    token: invitation,
+  });
+  return ticket;
+}
