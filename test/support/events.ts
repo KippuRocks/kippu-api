@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import type { EventId, OperationId, Sponsor, Sponsorship, ZoneId } from "@ticketto/sdk";
 import { createTRPCClient, httpLink, TRPCClientError } from "@trpc/client";
 import type { FastifyInstance } from "fastify";
@@ -47,6 +47,11 @@ export interface EventsHarness {
   /** The operation id of every command the sponsor was asked to sponsor, in order (`REQ-SP-1`). */
   readonly sponsored: readonly OperationId[];
   organiser(): Promise<TestOrganiser>;
+  /**
+   * A tRPC client in a holder session linked to a fresh random account. Linking
+   * itself belongs to `T-020-06`; the session here is stubbed.
+   */
+  holder(): { readonly account: string; readonly client: TestOrganiser["client"] };
   /** An event created with the organiser's authority, straight through the SDK. */
   createEventDirectly(
     organiser: TestOrganiser,
@@ -119,6 +124,24 @@ export async function eventsHarness(options: EventsHarnessOptions = {}): Promise
     authority,
     events,
     sponsored,
+
+    holder() {
+      const account = randomBytes(32).toString("hex");
+      const token = randomBytes(24).toString("base64url");
+      sessions.set(token, {
+        principal: { kind: "holder", account, sessionId: randomUUID() },
+        expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+      });
+      const client = createTRPCClient<AppRouter>({
+        links: [
+          httpLink({
+            url: `${address}${TRPC_PREFIX}`,
+            headers: () => ({ authorization: `Bearer ${token}` }),
+          }),
+        ],
+      });
+      return { account, client };
+    },
 
     async organiser() {
       const { organiserId, request } = await createOrganiser(database.store);

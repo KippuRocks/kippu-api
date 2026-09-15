@@ -133,6 +133,72 @@ export interface IssuedTicket extends Recorded {
   readonly ticket: string;
 }
 
+/**
+ * An invitation to create (`T-021-12`; `F-021` plan §5.6): a granted ticket of a
+ * class, at a placement, waiting for a guest to link a holder account in Saifu
+ * and redeem it.
+ */
+export interface CreateInvitationInput extends EventInput {
+  /** The `ClassId` of a `Granted` class defined for the event. */
+  readonly class: string;
+  readonly zone: string;
+  /** Checked when the invitation is created, and again when its ticket is issued. */
+  readonly placement: PlacementInput;
+  /**
+   * Who the invitation is for, as the organiser writes it — a name, say. Kept in
+   * Kippu and shown only to the organiser; it never reaches the ledger (`NFR-6`).
+   */
+  readonly guest: string | null;
+}
+
+/**
+ * Where an invitation stands. `redeeming` while its ticket is being issued;
+ * `failed` when issuance ended with no ledger verdict, since the ticket may exist.
+ */
+export type InvitationStatus = "open" | "redeeming" | "redeemed" | "failed";
+
+/** An invitation, as its organiser sees it. The token is never shown again. */
+export interface Invitation {
+  readonly id: string;
+  readonly event: string;
+  readonly class: string;
+  readonly zone: string;
+  readonly placement: PlacementInput;
+  readonly guest: string | null;
+  readonly status: InvitationStatus;
+  /** The holder account that redeemed it, once one has. */
+  readonly holder: string | null;
+  /** The `TicketId` issued, once redeemed. */
+  readonly ticket: string | null;
+  /** ISO 8601. */
+  readonly createdAt: string;
+  /** ISO 8601, once redeemed. */
+  readonly redeemedAt: string | null;
+}
+
+/** A created invitation, with its token: shown this once, and stored only as a hash. */
+export interface CreatedInvitation {
+  readonly invitation: Invitation;
+  /** The unguessable token the guest's link carries: 32 random bytes, base64url. */
+  readonly token: string;
+}
+
+/** An event's invitations, optionally those of one class. */
+export interface ListInvitationsInput extends EventInput {
+  readonly class: string | null;
+}
+
+/** A token to redeem. */
+export interface RedeemInvitationInput {
+  readonly token: string;
+}
+
+/** A redeemed invitation: the ticket the ledger recorded for the linked holder account. */
+export interface RedeemedInvitation extends IssuedTicket {
+  readonly event: string;
+  readonly class: string;
+}
+
 /** A defined ticket class. */
 export interface TicketClass {
   /** The opaque `ClassId` tickets carry: 32 random bytes, lower-case hex (`REQ-TC-2`). */
@@ -192,6 +258,24 @@ export interface Events {
     request: EventsRequest,
     input: IssueGrantedInput,
   ): Promise<IssuedTicket>;
+  /** Creates an invitation to a granted class of an event the organiser owns. */
+  createInvitation(
+    organiserId: string,
+    request: EventsRequest,
+    input: CreateInvitationInput,
+  ): Promise<CreatedInvitation>;
+  /** An event's invitations, oldest first. */
+  listInvitations(organiserId: string, input: ListInvitationsInput): Promise<readonly Invitation[]>;
+  /**
+   * Redeems an invitation for the holder account `holder` a holder session is
+   * linked to: the class's ticket is issued to it, once, under the organiser's
+   * authority. An unknown token, and one already redeemed, are refused.
+   */
+  redeemInvitation(
+    holder: string,
+    request: EventsRequest,
+    input: RedeemInvitationInput,
+  ): Promise<RedeemedInvitation>;
   /** Defines a ticket class for an event the organiser owns. */
   defineClass(
     organiserId: string,

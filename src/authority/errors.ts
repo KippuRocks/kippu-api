@@ -17,12 +17,16 @@ export class SpecCodeError extends Error {
 /**
  * A request refused before anything reaches the ledger, for a reason `SPEC.md`
  * §10 has no code for — a seat position that is not one of its zone's canonical
- * positions, say (`REQ-ID-3`). Routers turn it into a `BAD_REQUEST` carrying
- * this message, with no §10 code.
+ * positions, say (`REQ-ID-3`). Routers turn it into a tRPC error of its
+ * `transport` class — `BAD_REQUEST` unless said otherwise — carrying this
+ * message, with no §10 code.
  */
 export class RefusedRequest extends Error {
-  constructor(message: string) {
+  readonly transport: "BAD_REQUEST" | "NOT_FOUND" | "CONFLICT";
+
+  constructor(message: string, transport: RefusedRequest["transport"] = "BAD_REQUEST") {
     super(message);
     this.name = "RefusedRequest";
+    this.transport = transport;
   }
 }
