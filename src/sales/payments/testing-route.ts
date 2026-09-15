@@ -36,9 +36,10 @@ const bodySchema = {
  * the provider would. `:checkoutId` is the provider's checkout id: the last
  * segment of `Checkout.payment.url`.
  *
- * Mounted only by `createServer`, only in `development` and `test`, and only
- * when the test provider is in use: with Bloque's credentials set, in `staging`
- * or `production`, the path does not exist (404).
+ * Mounted only by `createServer`, only in `development`, `test` and `staging`,
+ * and only when the test provider is in use (`KIPPU_PAYMENTS_PROVIDER=test`, or
+ * no provider named and no Bloque credentials outside `staging`): with Bloque, or
+ * in `production`, the path does not exist (404).
  */
 export function registerPaymentTestingRoute(
   app: FastifyInstance,
