@@ -19,6 +19,8 @@ const PUBLIC_PROCEDURES = [
   "auth.organiser.completeSignIn",
   "auth.organiser.completeSignUp",
   "derived.events.get",
+  "sales.checkout.begin",
+  "sales.checkout.get",
   "system.health",
 ];
 
@@ -41,6 +43,7 @@ const services: Services = {
   events: new Proxy({} as Services["events"], { get: () => refusing }),
   metadata: new Proxy({} as Services["metadata"], { get: () => refusing }),
   derived: new Proxy({} as Services["derived"], { get: () => refusing }),
+  sales: new Proxy({} as Services["sales"], { get: () => refusing }),
 };
 
 const anonymous: Context = { requestId: "test", session: null, principal: ANONYMOUS, services };

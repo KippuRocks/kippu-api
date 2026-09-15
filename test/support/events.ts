@@ -15,6 +15,7 @@ import { createEvents } from "../../src/events/service.js";
 import { type KippuTicketto, makeTicketto } from "../../src/ledger/ticketto.js";
 import { createMetadataDocuments } from "../../src/metadata/documents.js";
 import type { MetadataStorage } from "../../src/metadata/storage.js";
+import { createSales } from "../../src/sales/service.js";
 import type { AppRouter } from "../../src/trpc/router.js";
 import { createMigratedTestDatabase, type TestDatabase } from "./database.js";
 import { createOrganiser } from "./organisers.js";
@@ -32,6 +33,14 @@ export interface TestOrganiser {
   readonly client: ReturnType<typeof createTRPCClient<AppRouter>>;
 }
 
+export interface TestHolder {
+  /** The holder's ledger `AccountId`. */
+  readonly account: string;
+  readonly sessionId: string;
+  /** A tRPC client signed in as this holder. */
+  readonly client: ReturnType<typeof createTRPCClient<AppRouter>>;
+}
+
 /**
  * kippu-api's events services over a migrated test store and `backend-memory`,
  * served over HTTP. Organiser sessions are stubbed: sign-in belongs to
@@ -44,6 +53,8 @@ export interface EventsHarness {
   readonly authority: OrganiserAuthority;
   /** The events services the app serves. */
   readonly events: ReturnType<typeof createEvents>;
+  /** The sales services the app serves (`F-022`). */
+  readonly sales: ReturnType<typeof createSales>;
   /** The operation id of every command the sponsor was asked to sponsor, in order (`REQ-SP-1`). */
   readonly sponsored: readonly OperationId[];
   organiser(): Promise<TestOrganiser>;
@@ -52,6 +63,13 @@ export interface EventsHarness {
    * itself belongs to `T-020-06`; the session here is stubbed.
    */
   holder(): { readonly account: string; readonly client: TestOrganiser["client"] };
+  /**
+   * A holder whose account has a `holders` row, as linking leaves one, in a stubbed
+   * holder session (`T-020-06`).
+   */
+  linkedHolder(): Promise<TestHolder>;
+  /** A tRPC client with no session: the anonymous principal (`REQ-MP-7`). */
+  anonymous(): ReturnType<typeof createTRPCClient<AppRouter>>;
   /** An event created with the organiser's authority, straight through the SDK. */
   createEventDirectly(
     organiser: TestOrganiser,
@@ -92,6 +110,12 @@ export async function eventsHarness(options: EventsHarnessOptions = {}): Promise
     },
   });
   const events = createEvents({ store: database.store, authority, ledger });
+  const sales = createSales({
+    store: database.store,
+    ledger,
+    classes: events.classes,
+    zones: events.zones,
+  });
 
   const sessions = new Map<string, SessionInfo>();
   const auth = new Proxy({} as Auth, {
@@ -114,8 +138,25 @@ export async function eventsHarness(options: EventsHarnessOptions = {}): Promise
             authority,
           }),
         };
-  const app: FastifyInstance = buildApp({}, undefined, { auth, events, ...metadata });
+  const app: FastifyInstance = buildApp({}, undefined, { auth, events, sales, ...metadata });
   const address = await app.listen({ host: "127.0.0.1", port: 0 });
+
+  /** A tRPC client in a stubbed holder session for `account`. */
+  const holderClient = (account: string, sessionId: string) => {
+    const token = randomBytes(24).toString("base64url");
+    sessions.set(token, {
+      principal: { kind: "holder", account, sessionId },
+      expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+    });
+    return createTRPCClient<AppRouter>({
+      links: [
+        httpLink({
+          url: `${address}${TRPC_PREFIX}`,
+          headers: () => ({ authorization: `Bearer ${token}` }),
+        }),
+      ],
+    });
+  };
 
   return {
     database,
@@ -123,24 +164,28 @@ export async function eventsHarness(options: EventsHarnessOptions = {}): Promise
     ledger,
     authority,
     events,
+    sales,
     sponsored,
 
     holder() {
       const account = randomBytes(32).toString("hex");
-      const token = randomBytes(24).toString("base64url");
-      sessions.set(token, {
-        principal: { kind: "holder", account, sessionId: randomUUID() },
-        expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+      return { account, client: holderClient(account, randomUUID()) };
+    },
+
+    async linkedHolder() {
+      const account = randomBytes(32).toString("hex");
+      await database.store.query(
+        "INSERT INTO holders (account, created_at, last_linked_at) VALUES ($1, now(), now())",
+        [account],
+      );
+      const sessionId = randomUUID();
+      return { account, sessionId, client: holderClient(account, sessionId) };
+    },
+
+    anonymous() {
+      return createTRPCClient<AppRouter>({
+        links: [httpLink({ url: `${address}${TRPC_PREFIX}` })],
       });
-      const client = createTRPCClient<AppRouter>({
-        links: [
-          httpLink({
-            url: `${address}${TRPC_PREFIX}`,
-            headers: () => ({ authorization: `Bearer ${token}` }),
-          }),
-        ],
-      });
-      return { account, client };
     },
 
     async organiser() {

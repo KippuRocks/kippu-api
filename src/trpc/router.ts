@@ -2,6 +2,7 @@ import { authRouter } from "../auth/router.js";
 import { derivedRouter } from "../derived/router.js";
 import { eventsRouter } from "../events/router.js";
 import { metadataRouter } from "../metadata/router.js";
+import { salesRouter } from "../sales/router.js";
 import { publicProcedure, router } from "./trpc.js";
 
 /**
@@ -21,6 +22,7 @@ export const appRouter = router({
   events: eventsRouter,
   metadata: metadataRouter,
   derived: derivedRouter,
+  sales: salesRouter,
 });
 
 export type AppRouter = typeof appRouter;
