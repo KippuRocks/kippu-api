@@ -11,7 +11,7 @@ import type {
   TicketId,
   Ticketto,
 } from "@ticketto/sdk";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   LedgerQueryError,
   ledgerFactsProjection,
@@ -48,6 +48,10 @@ function resultsOf(store: Store) {
     attendance: async (ticket: TicketId) => (await queries.attendance(ticket)).result,
   };
 }
+
+// These tests create databases and write to a ledger: on a loaded machine that
+// takes far longer than Vitest's 5 s default.
+vi.setConfig({ testTimeout: 60_000, hookTimeout: 60_000 });
 
 describeWithStore("the derived copy's projections", () => {
   let databases: TestDatabase[];

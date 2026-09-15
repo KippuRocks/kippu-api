@@ -8,7 +8,14 @@ import {
   publicProcedure,
   router,
 } from "../trpc/trpc.js";
-import type { EventRead, EventsOnSalePage, EventsRead, HoldingsRead, WaitedFor } from "./ports.js";
+import type {
+  AdmissionFlagsRead,
+  EventRead,
+  EventsOnSalePage,
+  EventsRead,
+  HoldingsRead,
+  WaitedFor,
+} from "./ports.js";
 
 /**
  * Validates with a schema, and types the input as `T` — a type declared without
@@ -84,6 +91,20 @@ export const derivedRouter = router({
       ({ ctx }): Promise<EventsRead> =>
         ctx.services.derived.organiserEvents(ctx.principal.organiserId),
     ),
+  }),
+  admissionFlags: router({
+    /**
+     * Ibento: the organiser's flagged admissions for an event — each provisional
+     * admission the ledger refused, with its cause, and each report from a gate
+     * whose clock was more than 10 s from Kippu's (`REQ-OP-3`) — in the order the
+     * reports arrived.
+     */
+    list: organiserProcedure
+      .input(parser<{ event: string }>(eventInput))
+      .query(
+        ({ ctx, input }): Promise<AdmissionFlagsRead> =>
+          ctx.services.derived.admissionFlags(ctx.principal.organiserId, input.event),
+      ),
   }),
   holdings: router({
     /** Saifu: the tickets the linked holder's account holds, each with its class metadata and event. */

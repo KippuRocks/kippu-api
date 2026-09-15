@@ -200,14 +200,32 @@ async function applyCommand(
       );
       return;
     }
-    case "transferTicket":
+    case "transferTicket": {
+      // The holder it leaves, for the transfer history (REQ-OP-3's transfer cause).
+      const previous = await tx.query<{ holder: string }>(
+        "SELECT holder FROM derived_tickets WHERE id = $1 AND event_id = $2 FOR UPDATE",
+        [command.ticket, command.event],
+      );
+      const from = previous.rows[0]?.holder;
+      if (from === undefined) {
+        throw new UnprojectableRecordError(record, "the copy holds no such ticket in the event");
+      }
       await exactlyOne(
         tx,
         record,
         "UPDATE derived_tickets SET holder = $3, sequence = $4 WHERE id = $1 AND event_id = $2",
         [command.ticket, command.event, command.receiver, sequence],
       );
+      await exactlyOne(
+        tx,
+        record,
+        `INSERT INTO derived_transfers
+           (sequence, event_id, ticket_id, from_holder, to_holder, recorded_at)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [sequence, command.event, command.ticket, from, command.receiver, record.recordedAt],
+      );
       return;
+    }
     case "removeRestriction": {
       // The command only ever clears the flag it names (`INV-10`).
       if (command.restriction !== "cannotResale" && command.restriction !== "cannotTransfer") {

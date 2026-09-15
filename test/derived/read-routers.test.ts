@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { classLocator, eventLocator } from "@kippu/metadata-schema";
 import type { AccountId, ClassId, Discriminator, EventId, TicketId, ZoneId } from "@ticketto/sdk";
 import type { TRPCError } from "@trpc/server";
-import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, expect, it, vi } from "vitest";
 import { ANONYMOUS, type Principal, type Services } from "../../src/auth/ports.js";
 import { createFreshness, type Freshness } from "../../src/derived/freshness.js";
 import { ledgerFactsProjection } from "../../src/derived/ledger-facts.js";
@@ -20,6 +20,10 @@ import {
   type TestOrganiser,
 } from "../support/events.js";
 import { memoryMetadataStorage } from "../support/object-storage.js";
+
+// These tests create databases and write to a ledger: on a loaded machine that
+// takes far longer than Vitest's 5 s default.
+vi.setConfig({ testTimeout: 60_000, hookTimeout: 60_000 });
 
 describeWithStore("read routers for Saifu, Ibento and Ichiba", () => {
   let harness: EventsHarness;
@@ -220,7 +224,7 @@ describeWithStore("read routers for Saifu, Ibento and Ichiba", () => {
       holder: account,
     });
 
-    const waited = await as(holder).derived.waitFor({ cursor, timeout: 5_000 });
+    const waited = await as(holder).derived.waitFor({ cursor, timeout: 10_000 });
     expect(waited.reached).toBe(true);
 
     const read = await as(holder).derived.holdings.mine();
