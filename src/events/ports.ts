@@ -7,12 +7,15 @@
  * Identifiers cross it as lower-case hex strings.
  */
 
-import type { Principal } from "../auth/ports.js";
+import type { ActingPrincipal } from "../auth/ports.js";
 
-/** The request a call acts on behalf of: what its ledger writes are attributed to (`NFR-7`). */
+/**
+ * The request a call acts on behalf of: what its ledger writes are attributed to
+ * (`NFR-7`). A session's principal, or Kippu itself acting for an organiser.
+ */
 export interface EventsRequest {
   readonly requestId: string;
-  readonly principal: Principal;
+  readonly principal: ActingPrincipal;
 }
 
 /** How a ticket entered circulation (`SPEC.md` §5.2). */
@@ -67,6 +70,42 @@ export interface DecreaseCapacityInput {
 export interface CapacityChanged extends Recorded {
   readonly event: string;
   readonly capacity: number | null;
+}
+
+/** An event's status, as the ledger recorded its change (`T-021-09`). */
+export interface StatusChanged {
+  readonly event: string;
+  readonly status: "Sealed" | "Cancelled" | "Finished";
+  /** The receipt's log cursor; `null` when the ledger already had the status and nothing was written. */
+  readonly cursor: string | null;
+}
+
+/** When an event is to finish, set by its organiser (`REQ-EV-12`). */
+export interface ScheduleFinishInput {
+  readonly event: string;
+  /** Unix milliseconds, in the future. */
+  readonly at: number;
+}
+
+/**
+ * An event's scheduled `Finished` (`REQ-EV-12`; `F-021` plan §5.5): off unless the
+ * organiser sets one, noticed 24 hours before, and cancellable until it runs.
+ */
+export interface FinishSchedule {
+  readonly event: string;
+  /** Unix milliseconds. */
+  readonly at: number;
+  /**
+   * `scheduled` until it runs; `running` while Kippu submits it; `finished` once the
+   * ledger recorded it; `refused` when the ledger refused it (`errorCode` says why);
+   * `cancelled` by the organiser.
+   */
+  readonly status: "scheduled" | "running" | "finished" | "refused" | "cancelled";
+  /** Unix milliseconds, from 24 hours before `at`: when the notice is due. */
+  readonly noticeAt: number;
+  /** Unix milliseconds: when the organiser was noticed; `null` until then. */
+  readonly noticedAt: number | null;
+  readonly errorCode: string | null;
 }
 
 /** An event's pass window to set (`T-021-15`). */
@@ -347,6 +386,29 @@ export interface Events {
     request: EventsRequest,
     input: SetSaleAssetInput,
   ): Promise<EventSaleAsset>;
+  /** Seals an event the organiser owns, after releasing its holds (`US-A4`, `REQ-HD-4`). */
+  seal(organiserId: string, request: EventsRequest, input: EventInput): Promise<StatusChanged>;
+  /**
+   * Cancels an event the organiser owns, after releasing its holds, then records a
+   * refund entitlement per purchased ticket (`US-A5`, `AC-A5.5`).
+   */
+  cancel(organiserId: string, request: EventsRequest, input: EventInput): Promise<StatusChanged>;
+  /** Finishes an event the organiser owns now (`REQ-EV-12`). */
+  finish(organiserId: string, request: EventsRequest, input: EventInput): Promise<StatusChanged>;
+  /** Schedules, or reschedules, an event's `Finished`. */
+  scheduleFinish(
+    organiserId: string,
+    request: EventsRequest,
+    input: ScheduleFinishInput,
+  ): Promise<FinishSchedule>;
+  /** Cancels an event's scheduled `Finished`, until it runs. */
+  cancelScheduledFinish(
+    organiserId: string,
+    request: EventsRequest,
+    input: EventInput,
+  ): Promise<FinishSchedule>;
+  /** An event's scheduled `Finished`, or `null` when none was ever set. */
+  finishSchedule(organiserId: string, input: EventInput): Promise<FinishSchedule | null>;
   /**
    * Decreases the capacity of an event the organiser owns (`US-A6`). Refused below
    * issued tickets plus outstanding holds with `ERR-CapacityBelowIssuance`

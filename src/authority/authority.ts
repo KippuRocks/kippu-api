@@ -167,7 +167,7 @@ export function createOrganiserAuthority(options: OrganiserAuthorityOptions): Or
             account,
             request.requestId,
             principal.kind,
-            principal.kind === "anonymous" ? null : principal.sessionId,
+            "sessionId" in principal ? principal.sessionId : null,
             now(),
           ],
         );

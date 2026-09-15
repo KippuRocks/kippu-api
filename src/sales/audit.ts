@@ -1,9 +1,9 @@
-import type { Principal } from "../auth/ports.js";
+import type { ActingPrincipal } from "../auth/ports.js";
 import type { Store } from "../store/store.js";
 
 /** Who caused a checkout step: a principal, the payment provider's webhook, or the background sweep. */
 export type CheckoutActor =
-  | Principal
+  | ActingPrincipal
   | { readonly kind: "payment-provider" }
   | { readonly kind: "sweep" };
 

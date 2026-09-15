@@ -14,6 +14,7 @@ import { createFreshness, type Freshness } from "./derived/freshness.js";
 import { ledgerFactsProjection } from "./derived/ledger-facts.js";
 import { createDerivedReader, type DerivedReader } from "./derived/reader.js";
 import { createReads } from "./derived/reads.js";
+import { type FinishScheduler, finishScheduler } from "./events/finish-schedule.js";
 import { createEvents } from "./events/service.js";
 import { developmentSponsor } from "./ledger/development-sponsor.js";
 import { type ReceiptTracker, trackReceipts } from "./ledger/receipts.js";
@@ -111,6 +112,8 @@ export interface DomainServices {
   readonly freshness: Freshness;
   /** Records lapsed holds in the background (`T-022-03`); not started. */
   readonly lapses: LapseSweeper;
+  /** Runs scheduled `Finished` and their notices in the background (`T-021-09`); not started. */
+  readonly finishes: FinishScheduler;
   /** Iriguchi's admission reports (`T-024-04`), for `F-025`'s provisional-admission flags. */
   readonly admissionReports: AdmissionReports;
   /**
@@ -272,7 +275,17 @@ export function createDomainServices(
     isTestPaymentProvider(payments.provider)
       ? payments.provider
       : null;
-  return { services, ledger, reader, freshness, lapses, admissionReports, testingPayments };
+  const finishes = finishScheduler(events.finishSchedules);
+  return {
+    services,
+    ledger,
+    reader,
+    freshness,
+    lapses,
+    finishes,
+    admissionReports,
+    testingPayments,
+  };
 }
 
 export interface KippuServer {
@@ -294,11 +307,8 @@ export function createServer(
   options: FastifyServerOptions = {},
   wiring: WiringOptions = {},
 ): KippuServer {
-  const { services, ledger, reader, freshness, lapses, testingPayments } = createDomainServices(
-    config,
-    store,
-    wiring,
-  );
+  const { services, ledger, reader, freshness, lapses, finishes, testingPayments } =
+    createDomainServices(config, store, wiring);
   const app = buildApp(options, undefined, services);
   if (testingPayments !== null) {
     registerPaymentTestingRoute(app, testingPayments, services.sales);
@@ -309,10 +319,12 @@ export function createServer(
     start: () => {
       reader.start();
       lapses.start();
+      finishes.start();
     },
     async close() {
       await reader.stop();
       await lapses.stop();
+      await finishes.stop();
       await freshness.close();
       await app.close();
     },

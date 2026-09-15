@@ -17,11 +17,14 @@ export type {
   DefineClassInput,
   EventPassWindow,
   EventSaleAsset,
+  FinishSchedule,
   InvitationRefusal,
   SaleAsset,
+  ScheduleFinishInput,
   SetClassPriceInput,
   SetPassWindowInput,
   SetSaleAssetInput,
+  StatusChanged,
   TicketClass,
 } from "../../../src/events/ports.js";
 /** Operator authorisation (`F-024`): operator accounts, grants, the check and admission reports, for Ibento and Iriguchi. */
