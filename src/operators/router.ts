@@ -116,6 +116,7 @@ const admissionReportInput = z
     gate,
     ticket: id32,
     passId: z.string().regex(/^[0-9a-f]{32}$/, "expected 32 lower-case hex characters"),
+    holder: id32.optional(),
     verdict: z.discriminatedUnion("kind", [
       z.object({ kind: z.literal("admitted"), submission: admissionSubmission }).strict(),
       z

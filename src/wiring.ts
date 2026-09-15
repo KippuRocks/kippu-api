@@ -215,6 +215,7 @@ export function createDomainServices(
     storage: options.metadataStorage ?? NO_METADATA_STORAGE,
     authority,
     maxPassWindow: ledgerLimits().maxPassWindow,
+    maxRecordingLag: ledgerLimits().maxRecordingLag,
     ...(publicUrl === undefined ? {} : { publicUrl }),
   });
   if (options.payments === undefined && environment === "staging") {

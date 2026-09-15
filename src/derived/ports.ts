@@ -150,15 +150,19 @@ export interface WaitedFor {
  * - `same-pass-at-two-gates` — refused as `ERR-PassReplayed`, and another report
  *   admitted the same pass.
  * - `transfer-before-recording` — refused as `ERR-InvalidPass`, with a transfer
- *   of the ticket recorded between the gate's verdict and the report of the refusal.
+ *   that moved the ticket away from the pass's holder recorded no earlier than
+ *   `presentedAt` less the 10 s gate tolerance. Needs the report to carry the holder.
  * - `gate-clock-outside-tolerance` — the gate's clock was more than 10 s from
  *   Kippu's: for a refusal, one as `ERR-PassExpired`; or on any report at all.
+ * - `not-recorded` — the gate's submission failed with no verdict, and the ledger
+ *   did not record the pass by the last moment it could have (`T-025-12`).
  * - `unexplained` — the ledger refused the admission for none of the causes above.
  */
 export type AdmissionFlagCause =
   | "same-pass-at-two-gates"
   | "transfer-before-recording"
   | "gate-clock-outside-tolerance"
+  | "not-recorded"
   | "unexplained";
 
 /** How a report for the same pass ended, as its gate reported it. */
@@ -198,9 +202,15 @@ export interface AdmissionFlag {
   readonly receivedAt: number;
   /** `deviceClock − receivedAt`, in ms. */
   readonly clockDrift: number;
+  /**
+   * For `not-recorded`: the ledger time, in Unix ms, after which the pass could no
+   * longer be recorded — `presentedAt` plus the ledger's longest pass window and
+   * its maximum recording lag. `null` otherwise.
+   */
+  readonly recordingDeadline: number | null;
   /** Every other report for the same pass, in the order received. */
   readonly otherReports: readonly RelatedReport[];
-  /** Transfers of the ticket recorded between the verdict and the report. */
+  /** Transfers away from the pass's holder that explain the refusal. */
   readonly transfers: readonly FlagTransfer[];
 }
 

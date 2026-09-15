@@ -91,7 +91,15 @@ export async function mayAdmit(
  */
 export async function reportAdmission(
   operatorToken: string,
-  scan: { reportId: string; event: string; gate: string; ticket: string; passId: string },
+  scan: {
+    reportId: string;
+    event: string;
+    gate: string;
+    ticket: string;
+    passId: string;
+    /** The pass's holder account, read from the pass. */
+    holder: string;
+  },
   presentedAt: number,
   submission: AdmissionSubmission,
 ): Promise<number> {

@@ -158,6 +158,13 @@ export interface AdmissionReportInput {
   readonly ticket: string;
   /** The pass id, 32 lower-case hex characters. */
   readonly passId: string;
+  /**
+   * The account the pass designates as its holder, 64 lower-case hex characters,
+   * read from the pass: public, not personal data. Optional for gates that do not
+   * send it yet; without it, a refusal as `ERR-InvalidPass` cannot be explained by
+   * a transfer (`F-025` plan §5.5).
+   */
+  readonly holder?: string;
   /** For an admission, how its submission ended; a refusal is never submitted. */
   readonly verdict:
     | { readonly kind: "admitted"; readonly submission: AdmissionSubmission }

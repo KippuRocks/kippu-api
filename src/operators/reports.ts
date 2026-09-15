@@ -73,6 +73,7 @@ interface ReportRow {
   readonly gate: string;
   readonly ticket: string;
   readonly pass_id: string;
+  readonly holder: string | null;
   readonly verdict: "admitted" | "refused";
   readonly refusal: string | null;
   readonly presented_at: Date;
@@ -84,7 +85,7 @@ interface ReportRow {
 }
 
 const COLUMNS = `seq, report_id, operator_id, organiser_id, session_id, request_id, event, gate,
-  ticket, pass_id, verdict, refusal, presented_at, device_clock, submission, receipt_cursor,
+  ticket, pass_id, holder, verdict, refusal, presented_at, device_clock, submission, receipt_cursor,
   error_code, received_at`;
 
 function submissionOf(row: ReportRow): AdmissionSubmission {
@@ -110,6 +111,7 @@ function reportOf(row: ReportRow): StoredAdmissionReport {
     gate: row.gate,
     ticket: row.ticket,
     passId: row.pass_id,
+    ...(row.holder === null ? {} : { holder: row.holder }),
     verdict:
       row.verdict === "admitted"
         ? { kind: "admitted", submission: submissionOf(row) }
@@ -173,8 +175,8 @@ export function createAdmissionReports({
         `INSERT INTO admission_reports
            (report_id, operator_id, organiser_id, session_id, request_id, event, gate, ticket,
             pass_id, verdict, refusal, presented_at, device_clock, submission, receipt_cursor,
-            error_code, received_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+            error_code, received_at, holder)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
          ON CONFLICT (report_id) DO NOTHING
          RETURNING ${COLUMNS}`,
         [
@@ -195,6 +197,7 @@ export function createAdmissionReports({
           submission?.outcome === "settled" ? submission.cursor : null,
           submission?.outcome === "rejected" ? submission.errorCode : null,
           now(),
+          input.holder ?? null,
         ],
       );
       const row =
