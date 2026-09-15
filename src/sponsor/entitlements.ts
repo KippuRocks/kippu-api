@@ -5,36 +5,42 @@
  * Sponsorship is an entitlement, not a credit line. Every sponsored input is
  * attributable to one — an event owned, a ticket held, an account being created
  * — decided from ledger facts in the derived copy. Whatever the relay decides,
- * the ledger's rules still decide the write (`REQ-IX-1`, `AD-25`): the copy can
- * only wrongly refuse, never wrongly grant a write.
+ * the ledger's rules still decide the write (`REQ-IX-1`, `AD-25`).
+ *
+ * **The signer is verified first** (`T-023-09`, as ruled in `M1`). The account an
+ * input names is its signer only if the authorisation verifies, with the V0
+ * profile, against a credential registration of that account in the derived copy
+ * — or, for an account's first registration, against the registration it
+ * carries, as the ledger's rules do. A forged or unregistered authorisation is
+ * refused before any entitlement is looked at, so it neither obtains a
+ * sponsorship nor counts against another account's rate limit. A registration the
+ * copy has not read yet is a refusal the lag-aware retry resolves (`REQ-SP-5`).
  *
  * | Input | Entitled when |
  * |---|---|
  * | An organiser command on an event | Its signer owns the event |
- * | `createEvent` | Its signer is the event's creator: the event id derives from the signer |
+ * | `createEvent` | Its signer is a Kippu organiser account, and the event id derives from it |
  * | `issueTicket` | Signed by the event's owner |
  * | `transferTicket` | Signed by the ticket's holder, and the ticket is not `cannot_transfer` |
  * | `registerCredential` | Always, within the registration rate limit per account |
  * | An access pass | Its ticket exists and its event is neither `Cancelled` nor `Finished` |
  *
- * The signer is the account the input's authorisation names (`accountOf`).
- * The relay does not verify the authorisation: that is the ledger's rule
- * (`AD-25`), and the relay has no credential registrations to verify it with.
- *
  * The sponsor holds no issuance right and signs nothing as an organiser or a
  * holder (`REQ-SP-2`): a sponsorship authorises nothing on the ledger, it only
  * undertakes to bear the input's cost.
  */
-import { accountOf, eventId } from "@ticketto/profile-v0";
+import { eventId } from "@ticketto/profile-v0";
 import type {
   AccountId,
   Command,
   CommandKind,
   EventId,
+  Profile,
   SignedAccessPass,
   SignedCommand,
 } from "@ticketto/sdk";
 import type { DerivedQueries } from "../derived/queries.js";
+import type { OrganiserAccounts } from "./derived.js";
 
 /** What makes an input entitled, for the record every sponsorship keeps (`F-023` §5.5). */
 export type Entitlement =
@@ -57,6 +63,10 @@ export interface RegistrationRateLimit {
 
 export interface EntitlementsOptions {
   readonly derived: DerivedQueries;
+  /** Kippu organiser ledger accounts, for `createEvent`. */
+  readonly organisers: OrganiserAccounts;
+  /** The V0 profile, with the deployment's holder RP id: what verifies authorisations. */
+  readonly profile: Profile;
   readonly registrationRateLimit: RegistrationRateLimit;
   /** Milliseconds since the epoch. Defaults to `Date.now`. */
   readonly now?: () => number;
@@ -79,13 +89,8 @@ const EVENT_OWNER_COMMANDS: ReadonlySet<CommandKind> = new Set<CommandKind>([
   "removeRestriction",
 ]);
 
-function signerOf(input: SignedCommand | SignedAccessPass): AccountId | null {
-  const claimed = accountOf(input.authorisation);
-  return claimed.ok ? claimed.value.account : null;
-}
-
 export function createEntitlements(options: EntitlementsOptions): Entitlements {
-  const { derived, registrationRateLimit } = options;
+  const { derived, organisers, profile, registrationRateLimit } = options;
   const now = options.now ?? Date.now;
   if (
     !Number.isSafeInteger(registrationRateLimit.registrations) ||
@@ -108,6 +113,55 @@ export function createEntitlements(options: EntitlementsOptions): Entitlements {
     }
   };
 
+  /**
+   * The account that signed `input`, if its authorisation verifies against a
+   * registration of that account (`REQ-CP-6`), as the ledger's rules verify it.
+   */
+  const verifiedSigner = async (
+    input: SignedCommand | SignedAccessPass,
+  ): Promise<{ ok: true; account: AccountId } | { ok: false; reason: string }> => {
+    const claimed = profile.accountOf(input.authorisation);
+    if (!claimed.ok) return { ok: false, reason: "the authorisation names no account" };
+    const { account, credential } = claimed.value;
+    const payload =
+      "command" in input ? profile.encodeCommand(input.command) : profile.encodePass(input.pass);
+
+    // An account's first registration is authorised by the credential it registers.
+    if ("command" in input && input.command.kind === "registerCredential") {
+      const { command } = input;
+      if (command.account === account) {
+        const registered = await derived.credentials(account);
+        if (registered.result.length === 0) {
+          const named = profile.registrationAccount(command.registration);
+          if (
+            named.ok &&
+            named.value.account === account &&
+            named.value.credential === credential &&
+            profile.verify(command.registration, payload, input.authorisation)
+          ) {
+            return { ok: true, account };
+          }
+          return {
+            ok: false,
+            reason: "a first registration must be authorised by the credential it registers",
+          };
+        }
+      }
+    }
+
+    const registration = await derived.credential(account, credential);
+    if (registration.result === null) {
+      return {
+        ok: false,
+        reason: "the authorising credential is not registered to its account in the derived copy",
+      };
+    }
+    if (!profile.verify(registration.result.value, payload, input.authorisation)) {
+      return { ok: false, reason: "the authorisation does not verify" };
+    }
+    return { ok: true, account };
+  };
+
   const ownedBy = async (event: EventId, signer: AccountId): Promise<EntitlementDecision> => {
     const read = await derived.event(event);
     if (read.result === null) return refuse(`no event ${event} in the derived copy`);
@@ -124,6 +178,9 @@ export function createEntitlements(options: EntitlementsOptions): Entitlements {
       case "createEvent": {
         if (eventId(signer, command.salt) !== command.event) {
           return refuse("the event id does not derive from the signer");
+        }
+        if (!(await organisers.isOrganiserAccount(signer))) {
+          return refuse("the signer is not a Kippu organiser account");
         }
         return {
           entitled: true,
@@ -170,8 +227,9 @@ export function createEntitlements(options: EntitlementsOptions): Entitlements {
 
   return {
     async decide(input) {
-      const signer = signerOf(input);
-      if (signer === null) return refuse("the authorisation names no account");
+      const verified = await verifiedSigner(input);
+      if (!verified.ok) return refuse(verified.reason);
+      const signer = verified.account;
       if ("command" in input) return decideCommand(input.command, signer);
       const read = await derived.ticket(input.pass.ticket);
       const ticket = read.result?.value;

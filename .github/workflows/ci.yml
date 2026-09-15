@@ -146,6 +146,7 @@ jobs:
           KIPPU_SPONSOR_PORT=8082 \
           KIPPU_SPONSOR_REGISTRATIONS_PER_WINDOW=5 KIPPU_SPONSOR_REGISTRATION_WINDOW_SECONDS=3600 \
           KIPPU_SPONSOR_LAG_WAIT_MS=5000 \
+          KIPPU_SPONSOR_HOLDER_RP_ID=holder.kippu.example \
             node dist/sponsor/server.js &
           relay=$!
           for _ in $(seq 1 30); do

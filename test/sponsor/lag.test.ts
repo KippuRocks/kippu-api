@@ -108,6 +108,8 @@ describeWithStore("lag-aware sponsorship (REQ-SP-5, NFR-11)", () => {
       derived,
       entitlements: createEntitlements({
         derived: derived.queries,
+        organisers: derived.organisers,
+        profile: createProfileV0({ rpId: "holder.kippu.example" }),
         registrationRateLimit: { registrations: 5, window: 60_000 },
       }),
       lagWait: 3_000,
@@ -145,6 +147,24 @@ describeWithStore("lag-aware sponsorship (REQ-SP-5, NFR-11)", () => {
     const sponsorship = Uint8Array.from(Buffer.from(response.json().sponsorship, "hex"));
     expect(verifySponsorship(sponsorship, signed, { sponsors: [sponsor.account] }).ok).toBe(true);
   });
+
+  it("REQ-SP-5: a holder whose registration the copy has not read yet is sponsored once it catches up, never refused", async () => {
+    // A new holder registers and is issued a ticket directly on the ledger; the
+    // relay's copy has read neither when their first transfer asks for sponsorship.
+    const carol = await ledger.registerHolder(0x23);
+    const { ticket, cursor } = await issue(ledger, event, 0x06, carol);
+    const signed = await transfer(carol, event, ticket, bob);
+
+    expect((await derived.queries.credentials(carol.account)).result).toEqual([]);
+    const lagging = await sponsorRequest(signed, cursor);
+    expect(lagging.statusCode, lagging.body).toBe(503);
+    expect(lagging.json().error.code).toBe("lagging");
+
+    const pending = sponsorRequest(signed, cursor);
+    setTimeout(() => void catchUp(), 300);
+    const response = await pending;
+    expect(response.statusCode, response.body).toBe(200);
+  }, 30_000);
 
   it("REQ-SP-5: a copy that has not caught up in time is answered as lagging, never refused", async () => {
     const { ticket, cursor } = await issue(ledger, event, 0x02, alice);
@@ -205,6 +225,7 @@ describe("lag-aware sponsorship, without a database", () => {
     };
     const derived = {
       queries: {} as RelayDerivedCopy["queries"],
+      organisers: { isOrganiserAccount: async () => false },
       current: async () => ({ cursor: "7" as Cursor, records: 8, lastRecordedAt: 0 }),
       waitFor: async () => true,
       close: async () => {},

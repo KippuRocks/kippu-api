@@ -3,6 +3,8 @@ import { kmsP256Signer, type SponsoredInput, verifySponsorship } from "@kippu/sp
 import { softwareKmsP256Key } from "@kippu/sponsorship/testing";
 import {
   createProfileV0,
+  decodeAuthorisation,
+  encodeAuthorisation,
   encodeSignedAccessPass,
   encodeSignedCommand,
   eventId,
@@ -30,7 +32,11 @@ import {
   type TestDatabase,
 } from "../support/database.js";
 import { classId, HOLDER_RP_ID, memoryLedger, settled, zoneId } from "../support/memory-ledger.js";
-import { catchUpDerivedCopy, relayLoginRole } from "../support/sponsor-relay.js";
+import {
+  catchUpDerivedCopy,
+  recordOrganiserAccount,
+  relayLoginRole,
+} from "../support/sponsor-relay.js";
 
 const profile = createProfileV0({ rpId: HOLDER_RP_ID });
 const hex = (length: number, byte: number) => byte.toString(16).padStart(2, "0").repeat(length);
@@ -60,6 +66,7 @@ describeWithStore("entitlements (F-023 plan §5.3)", () => {
   const ledger = memoryLedger();
   const sponsor = kmsP256Signer(softwareKmsP256Key());
   const stranger = softwareP256Signer({ secretKey: new Uint8Array(32).fill(0x55) }).signer;
+  const outsider = softwareP256Signer({ secretKey: new Uint8Array(32).fill(0x66) });
   const zone = zoneId(0x51);
   let database: TestDatabase;
   let role: Awaited<ReturnType<typeof relayLoginRole>>;
@@ -109,6 +116,15 @@ describeWithStore("entitlements (F-023 plan §5.3)", () => {
       finished,
     ]);
 
+    await recordOrganiserAccount(database.store, ledger.organiser.signer.account);
+    // Registered on the ledger, but not a Kippu organiser account.
+    await settled(
+      ledger.direct.registerCredential(outsider.signer, {
+        account: outsider.signer.account,
+        registration: outsider.registration,
+      }),
+    );
+    await catchUpDerivedCopy(database.store, ledger);
     role = await relayLoginRole(database.url);
     derived = connectRelayDerivedCopy(role.url);
     relay = buildSponsorRelay({
@@ -116,6 +132,8 @@ describeWithStore("entitlements (F-023 plan §5.3)", () => {
       derived,
       entitlements: createEntitlements({
         derived: derived.queries,
+        organisers: derived.organisers,
+        profile: createProfileV0({ rpId: "holder.kippu.example" }),
         registrationRateLimit: { registrations: 2, window: 60_000 },
         now: () => clock,
       }),
@@ -174,6 +192,87 @@ describeWithStore("entitlements (F-023 plan §5.3)", () => {
     };
     await expectSponsored(await sign(organiser, command));
     await expectRefused(await sign(stranger, command));
+  });
+
+  it("REQ-OA-1: createEvent by a registered account that is not a Kippu organiser is refused, even with a derived id", async () => {
+    const salt = new Uint8Array(16).fill(0x0a);
+    const command: Command = {
+      kind: "createEvent",
+      ...envelope(),
+      event: eventId(outsider.signer.account, salt),
+      salt,
+      zones: [{ id: zone, kind: "Unseated" }],
+      capacity: null,
+      metadata: null,
+    };
+    const response = await request(await sign(outsider.signer, command));
+    expect(response.statusCode).toBe(403);
+    expect(response.json().error).toEqual({
+      code: "ERR-SponsorshipRefused",
+      detail: "the signer is not a Kippu organiser account",
+    });
+  });
+
+  it("REQ-SP-3: a forged authorisation is refused before any entitlement, whatever account it names", async () => {
+    const organiser = ledger.organiser;
+    const setStatus: Command = { kind: "setEventStatus", ...envelope(), event, status: "Sealed" };
+    // The organiser's credential and account, with a signature by another key.
+    const forged = decodeAuthorisation(await stranger.sign(profile.encodeCommand(setStatus)));
+    const genuine = decodeAuthorisation(
+      await organiser.signer.sign(profile.encodeCommand(setStatus)),
+    );
+    if (forged.kind !== "p256" || genuine.kind !== "p256") throw new Error("expected p256");
+    const claimingOrganiser = encodeAuthorisation({ ...genuine, signature: forged.signature });
+    const response = await request({ command: setStatus, authorisation: claimingOrganiser });
+    expect(response.statusCode).toBe(403);
+    expect(response.json().error).toEqual({
+      code: "ERR-SponsorshipRefused",
+      detail: "the authorisation does not verify",
+    });
+
+    // A genuine authorisation of a different command, replayed on this one.
+    const other: Command = { kind: "setEventStatus", ...envelope(), event, status: "Cancelled" };
+    const replayed = await organiser.signer.sign(profile.encodeCommand(other));
+    await expectRefused({ command: setStatus, authorisation: replayed });
+
+    // A holder's passkey assertion over another payload.
+    const transfer: Command = {
+      kind: "transferTicket",
+      ...envelope(),
+      event,
+      ticket,
+      receiver: bob.account,
+    };
+    const assertion = await alice.sign(
+      profile.encodeCommand({ ...transfer, receiver: alice.account }),
+    );
+    await expectRefused({ command: transfer, authorisation: assertion });
+  });
+
+  it("REQ-SP-3: an authorisation by a credential not registered to its account is refused", async () => {
+    const unregistered = simulatedWebAuthnSigner({ rpId: HOLDER_RP_ID });
+    const pass = await signPass(unregistered.signer, ticket);
+    const response = await request(pass);
+    expect(response.statusCode).toBe(403);
+    expect(response.json().error.detail).toMatch(/not registered/);
+  });
+
+  it("REQ-SP-1b: a forged registration is never metered against the account it names", async () => {
+    const victim = simulatedWebAuthnSigner({ rpId: HOLDER_RP_ID });
+    const impostor = simulatedWebAuthnSigner({ rpId: HOLDER_RP_ID });
+    // The victim's account and registration, authorised by the impostor's credential.
+    const forged: Command = {
+      kind: "registerCredential",
+      ...envelope(),
+      account: victim.signer.account,
+      registration: victim.registration,
+    };
+    for (let attempt = 0; attempt < 5; attempt++) {
+      await expectRefused(await sign(impostor.signer, forged));
+    }
+    const genuine: Command = { ...forged, ...envelope() };
+    await expectSponsored(await sign(victim.signer, genuine));
+    await expectSponsored(await sign(victim.signer, { ...genuine, ...envelope() }));
   });
 
   it("REQ-SP-3: organiser commands on an event are sponsored for its owner only", async () => {

@@ -64,13 +64,19 @@ is configured to accept. A sponsorship attached to any other input is refused.
 
 ## 3. Entitlements
 
-The signer is the account the input's authorisation names; the ledger verifies
-the authorisation itself.
+**The signer is verified first.** The input's authorisation must verify, with
+the V0 profile, against a credential registration of the account it names, as
+the relay's copy of ledger facts holds it. An account's first `registerCredential`
+is instead authorised by the credential it registers, as the ledger's rules
+require. A forged authorisation, or one by a credential not registered to its
+account, is refused before any entitlement is considered, and never counts
+against the named account's limits. If the relay's copy has not yet read the
+registration, send the receipt cursor of a write that follows it as `after` (§4).
 
 | Input | Sponsored when |
 |---|---|
 | `setEventStatus`, `setEventCapacity`, `addZone`, `removeZone`, `removeRestriction` | The signer owns the event |
-| `createEvent` | The event id derives from the signer |
+| `createEvent` | The signer is a Kippu organiser account, and the event id derives from it |
 | `issueTicket` | Signed by the event's owner |
 | `transferTicket` | Signed by the ticket's holder, and the ticket is not `cannot_transfer` |
 | `registerCredential` | Always, within a per-account rate limit |

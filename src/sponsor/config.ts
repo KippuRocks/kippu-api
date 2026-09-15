@@ -42,6 +42,12 @@ export interface SponsorRelayConfig {
    * none.
    */
   readonly lagWait: number;
+  /**
+   * The WebAuthn RP id holder credentials are bound to, a `profile-v0` parameter
+   * (`F-003` §5.3): the relay verifies holders' authorisations with it (`T-023-09`).
+   * It must be the deployment's, as the ledger's rules use.
+   */
+  readonly holderRpId: string;
 }
 
 function present(value: string | undefined): value is string {
@@ -111,6 +117,20 @@ function readSoftwareSecretKey(environment: SponsorRelayEnvironment, value: stri
   return Uint8Array.from(Buffer.from(value, "hex"));
 }
 
+/** A WebAuthn RP id: a bare, lower-case domain name, with no scheme, port or path. */
+const RP_ID =
+  /^(?=.{1,253}$)[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$/;
+
+function readHolderRpId(value: string | undefined): string {
+  if (!present(value) || !RP_ID.test(value)) {
+    throw new ConfigError(
+      "KIPPU_SPONSOR_HOLDER_RP_ID is required: the holder credentials' RP id, a bare lower-case " +
+        "domain name, as the ledger's profile is configured",
+    );
+  }
+  return value;
+}
+
 function readPositiveInteger(key: string, value: string | undefined): number {
   if (!present(value)) {
     throw new ConfigError(`${key} is required: a positive integer`);
@@ -150,5 +170,6 @@ export function loadSponsorRelayConfig(env: Environment = process.env): SponsorR
         ) * 1000,
     },
     lagWait: readPositiveInteger("KIPPU_SPONSOR_LAG_WAIT_MS", env.KIPPU_SPONSOR_LAG_WAIT_MS),
+    holderRpId: readHolderRpId(env.KIPPU_SPONSOR_HOLDER_RP_ID),
   };
 }

@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import pg from "pg";
 import { ledgerFactsProjection } from "../../src/derived/ledger-facts.js";
 import { createDerivedReader } from "../../src/derived/reader.js";
@@ -50,4 +50,23 @@ export async function catchUpDerivedCopy(store: Store, ledger: MemoryLedger): Pr
     onError: () => {},
   });
   await reader.catchUp();
+}
+
+/**
+ * Records `account` as a Kippu organiser's ledger account, as organiser authority
+ * does when it provisions a key (`T-021-01`), so the relay's organiser view lists it.
+ */
+export async function recordOrganiserAccount(store: Store, account: string): Promise<void> {
+  const organiser = randomUUID();
+  await store.query("INSERT INTO organisers (id, email) VALUES ($1, $2)", [
+    organiser,
+    `organiser-${organiser}@organiser.example`,
+  ]);
+  await store.query(
+    `INSERT INTO organiser_ledger_accounts
+       (organiser_id, kms_key_ref, public_key, account, provisioned_request_id,
+        provisioned_principal_kind, created_at)
+     VALUES ($1, $2, $3, $4, 'test', 'organiser', now())`,
+    [organiser, `test:${organiser}`, randomBytes(33), account],
+  );
 }
