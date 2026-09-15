@@ -10,6 +10,7 @@ import { describeWithStore } from "../support/database.js";
 import {
   type EventsHarness,
   eventsHarness,
+  OPERATION_LIFETIME,
   randomId,
   refusal,
   type TestOrganiser,
@@ -35,6 +36,7 @@ describeWithStore("scheduled Finished", () => {
       authority: harness.authority,
       ledger: harness.ledger,
       status: harness.events.status,
+      operationLifetime: OPERATION_LIFETIME,
       now: () => new Date(clock),
       notify: async (notice) => {
         notices.push(notice);

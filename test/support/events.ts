@@ -32,6 +32,9 @@ import { createOrganiser } from "./organisers.js";
 /** Placeholder: the real holder RP id is not chosen yet. */
 export const HOLDER_RP_ID = "holder.kippu.example";
 
+/** How long the harness's assembled commands stay valid, in milliseconds. */
+export const OPERATION_LIFETIME = 60_000;
+
 /** A random 32-byte identifier, such as a zone id. */
 export const randomId = () => randomBytes(32).toString("hex") as ZoneId;
 
@@ -126,7 +129,7 @@ export async function eventsHarness(options: EventsHarnessOptions = {}): Promise
     environment: "test",
     holderRpId: HOLDER_RP_ID,
     sponsor,
-    operationLifetime: 60_000,
+    operationLifetime: OPERATION_LIFETIME,
   });
   const authority = createOrganiserAuthority({
     store: database.store,
@@ -142,6 +145,7 @@ export async function eventsHarness(options: EventsHarnessOptions = {}): Promise
     authority,
     ledger,
     maxPassWindow: ledgerLimits().maxPassWindow,
+    operationLifetime: OPERATION_LIFETIME,
     saleActions: () => sales.organiserActions,
   });
   const payments = createTestPaymentProvider();
