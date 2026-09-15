@@ -1,4 +1,11 @@
-import type { AppRouter, EnrolmentCode, OperatorAccount, OperatorRefusal } from "@kippu/api";
+import type {
+  AppRouter,
+  EnrolmentCode,
+  GrantInput,
+  OperatorAccount,
+  OperatorGrant,
+  OperatorRefusal,
+} from "@kippu/api";
 import { createTRPCClient, httpBatchLink, TRPCClientError } from "@trpc/client";
 
 function signedIn(token: string) {
@@ -38,11 +45,26 @@ export async function revokeSessions(token: string, operator: string): Promise<n
   return sessionsRevoked;
 }
 
+/** How Ibento grants an operator gates of an event for a window, and revokes it (`T-024-02`). */
+export async function grantThenRevoke(token: string, input: GrantInput): Promise<OperatorGrant> {
+  const api = signedIn(token);
+  const grant = await api.operators.grants.create.mutate(input);
+  return api.operators.grants.revoke.mutate({ grant: grant.id });
+}
+
+/** How Iriguchi offers an operator the events and gates they may choose. */
+export async function gatesToChoose(operatorToken: string): Promise<[string, string][]> {
+  const grants = await signedIn(operatorToken).operators.grants.mine.query();
+  return grants.flatMap((grant) =>
+    grant.gates.map((gate): [string, string] => [grant.event, gate]),
+  );
+}
+
 /** The reason an operator request was refused, typed from the router's error shape. */
 export function operatorRefusal(error: unknown): OperatorRefusal | null {
   if (error instanceof TRPCClientError) {
     const reason = (error as TRPCClientError<AppRouter>).data?.reason;
-    return reason === "unknown-operator" ? reason : null;
+    return reason === "unknown-operator" || reason === "unknown-grant" ? reason : null;
   }
   return null;
 }
@@ -55,4 +77,7 @@ export async function rejectedByTheCompiler(token: string): Promise<void> {
   // @ts-expect-error — the listing's session count is a number.
   const count: string = (await api.operators.list.query())[0]?.liveSessions ?? "";
   void count;
+  const window = { operator: "", event: "", gates: [], until: 0 };
+  // @ts-expect-error — a grant's window is Unix milliseconds, not ISO text.
+  await api.operators.grants.create.mutate({ ...window, from: new Date().toISOString() });
 }

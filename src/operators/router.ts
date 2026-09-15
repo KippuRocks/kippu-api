@@ -1,13 +1,17 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import type { OrganiserPrincipal } from "../auth/ports.js";
-import { RefusedRequest } from "../authority/errors.js";
-import { RefusalReasonCause } from "../trpc/errors.js";
-import { organiserProcedure, router } from "../trpc/trpc.js";
+import { RefusedRequest, SpecCodeError } from "../authority/errors.js";
+import { RefusalReasonCause, toTRPCError } from "../trpc/errors.js";
+import { operatorProcedure, organiserProcedure, router } from "../trpc/trpc.js";
 import type {
   CreateOperatorInput,
   EnrolmentCode,
+  GrantIdInput,
+  GrantInput,
+  ListGrantsInput,
   OperatorAccount,
+  OperatorGrant,
   OperatorInput,
   OperatorsRequest,
   RevokedSessions,
@@ -27,11 +31,17 @@ function parser<T>(schema: z.ZodType): (value: unknown) => T {
   };
 }
 
-/** A refusal reaches the client in its transport class, with its reason in `error.data.reason`. */
+/**
+ * A §10 refusal reaches the client with its code in `error.data.errorCode`; a
+ * platform refusal in its transport class, with its reason in `error.data.reason`.
+ */
 async function mapped<T>(work: () => Promise<T>): Promise<T> {
   try {
     return await work();
   } catch (error) {
+    if (error instanceof SpecCodeError) {
+      throw toTRPCError(error);
+    }
     if (error instanceof RefusedRequest) {
       throw new TRPCError({
         code: error.transport,
@@ -54,6 +64,38 @@ const createOperatorInput = z.object({ name }).strict();
 
 const operatorInput = z.object({ operator: z.uuid() }).strict();
 
+const id32 = z.string().regex(/^[0-9a-f]{64}$/, "expected 64 lower-case hex characters");
+
+const timestamp = z.number().int().nonnegative().max(8.64e15);
+
+const gate = z
+  .string()
+  .trim()
+  .min(1)
+  .max(100)
+  .refine((value) => value.isWellFormed(), "expected well-formed Unicode");
+
+const grantInput = z
+  .object({
+    operator: z.uuid(),
+    event: id32,
+    gates: z
+      .array(gate)
+      .min(1)
+      .max(100)
+      .refine((gates) => new Set(gates).size === gates.length, "expected distinct gates"),
+    from: timestamp,
+    until: timestamp,
+  })
+  .strict()
+  .refine((input) => input.until > input.from, "expected until to be later than from");
+
+const grantIdInput = z.object({ grant: z.uuid() }).strict();
+
+const listGrantsInput = z
+  .object({ event: id32.nullable(), operator: z.uuid().nullable() })
+  .strict();
+
 const requestOf = (ctx: {
   readonly requestId: string;
   readonly principal: OrganiserPrincipal;
@@ -67,6 +109,10 @@ const requestOf = (ctx: {
  * `issueEnrolmentCode`, whose code Iriguchi redeems with
  * `auth.operator.redeemEnrolmentCode`; and `revokeSessions`. An operator of
  * another organiser is `NOT_FOUND`, reason `unknown-operator`.
+ *
+ * Grants (`T-024-02`) scope an operator to gates of an event, for a window:
+ * the organiser `create`s, `list`s and `revoke`s them, and the operator reads
+ * `mine`. They change no ledger state (`AC-E5.1`).
  */
 export const operatorsRouter = router({
   create: organiserProcedure
@@ -101,4 +147,39 @@ export const operatorsRouter = router({
           ctx.services.operators.revokeSessions(ctx.principal.organiserId, requestOf(ctx), input),
         ),
     ),
+  grants: router({
+    /**
+     * Grants gates of an event the organiser owns — `ERR-EventNotFound`,
+     * `ERR-NotOwner` otherwise — to one of their operators, from `from` until
+     * strictly before `until`.
+     */
+    create: organiserProcedure
+      .input(parser<GrantInput>(grantInput))
+      .mutation(
+        ({ ctx, input }): Promise<OperatorGrant> =>
+          mapped(() =>
+            ctx.services.operators.grant(ctx.principal.organiserId, requestOf(ctx), input),
+          ),
+      ),
+    list: organiserProcedure
+      .input(parser<ListGrantsInput>(listGrantsInput))
+      .query(
+        ({ ctx, input }): Promise<readonly OperatorGrant[]> =>
+          mapped(() => ctx.services.operators.listGrants(ctx.principal.organiserId, input)),
+      ),
+    /** Revokes a grant; the operator's next check under it is refused. */
+    revoke: organiserProcedure
+      .input(parser<GrantIdInput>(grantIdInput))
+      .mutation(
+        ({ ctx, input }): Promise<OperatorGrant> =>
+          mapped(() =>
+            ctx.services.operators.revokeGrant(ctx.principal.organiserId, requestOf(ctx), input),
+          ),
+      ),
+    /** The signed-in operator's grants not revoked and not ended, soonest first. */
+    mine: operatorProcedure.query(
+      ({ ctx }): Promise<readonly OperatorGrant[]> =>
+        mapped(() => ctx.services.operators.myGrants(ctx.principal)),
+    ),
+  }),
 });

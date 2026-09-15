@@ -121,7 +121,7 @@ const NO_METADATA_STORAGE: Pick<MetadataStorage, "get"> = { get: async () => nul
 /**
  * The domain services the server mounts, over the ledger its environment names
  * (`T-021-11`): identity and holder linking (`F-020`); events, zones, classes
- * and granted issuance (`F-021`); checkout (`F-022`); operator accounts (`F-024`);
+ * and granted issuance (`F-021`); checkout (`F-022`); operator accounts and grants (`F-024`);
  * the derived copy's reader
  * and read routes (`F-025`); and, given object storage, metadata document editing (`F-026`).
  *
@@ -235,7 +235,7 @@ export function createDomainServices(
     { lapseExpired: () => sales.payments.sweep(`sweep-${randomUUID()}`) },
     options.onLapseSweepError,
   );
-  const operators = createOperators({ store });
+  const operators = createOperators({ store, ledger, authority });
   const base = { auth, events, derived, sales, operators };
   const services =
     options.metadataStorage === undefined

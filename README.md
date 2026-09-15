@@ -242,7 +242,8 @@ Gate staff are managed like staff, not like key holders (`US-E5`). Operators, th
 - **Operator accounts** (`T-024-01`): an organiser creates named operators (`operators.create`) and lists them with their live session count (`operators.list`). The name is the organiser's own label and stays in Kippu (`NFR-6`).
 - **Enrolment** (`operators.issueEnrolmentCode`): a one-time code — 16 random bytes, base64url — returned once, stored as a SHA-256, valid for an hour. Iriguchi redeems it with `auth.operator.redeemEnrolmentCode` for a 24-hour operator session. Codes issued earlier stay valid until they expire or are redeemed.
 - **Revoking sessions** (`operators.revokeSessions`) ends every live session of the operator at once and voids their unredeemed codes; the operator enrols again only with a code issued afterwards. Revoking a session is separate from revoking a grant; either stops admissions.
-- An operator of another organiser is `NOT_FOUND`, with `error.data.reason` `unknown-operator`.
+- **Grants** (`T-024-02`; `F-024` plan §5.1): `operators.grants.create({ operator, event, gates, from, until })` lets an operator operate the named gates of an event from `from` until strictly before `until` (Unix milliseconds). Gates are the organiser's own labels, matched exactly. The organiser must own the event, read from the ledger (`ERR-EventNotFound`, `ERR-NotOwner`); grants and revocations write nothing to it (`AC-E5.1`). `operators.grants.list` filters by event and operator; `operators.grants.revoke` takes effect on the operator's next check. An operator reads their live and upcoming grants with `operators.grants.mine`.
+- An operator of another organiser is `NOT_FOUND`, with `error.data.reason` `unknown-operator`; a grant, `unknown-grant`.
 
 ### Checkout, handoff pairing and holds (`F-022`)
 
