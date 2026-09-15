@@ -17,6 +17,8 @@ import { ledgerLimits } from "../../src/ledger/rules.js";
 import { type KippuTicketto, makeTicketto } from "../../src/ledger/ticketto.js";
 import { createMetadataDocuments } from "../../src/metadata/documents.js";
 import type { MetadataStorage } from "../../src/metadata/storage.js";
+import type { ProofArtefactStorage } from "../../src/proofs/artefacts.js";
+import { createCapacityProofs } from "../../src/proofs/service.js";
 import { PAYMENT_WEBHOOK_PATH } from "../../src/sales/payment.js";
 import {
   createTestPaymentProvider,
@@ -40,6 +42,13 @@ export interface TestOrganiser {
   readonly client: ReturnType<typeof createTRPCClient<AppRouter>>;
 }
 
+export interface TestReviewer {
+  readonly reviewerId: string;
+  readonly sessionId: string;
+  /** A tRPC client signed in as this reviewer. */
+  readonly client: ReturnType<typeof createTRPCClient<AppRouter>>;
+}
+
 export interface TestHolder {
   /** The holder's ledger `AccountId`. */
   readonly account: string;
@@ -60,6 +69,10 @@ export interface EventsHarness {
   readonly authority: OrganiserAuthority;
   /** The events services the app serves. */
   readonly events: ReturnType<typeof createEvents>;
+  /** The capacity proof services the app serves (`T-021-08`). */
+  readonly capacityProofs: ReturnType<typeof createCapacityProofs>;
+  /** The private artefact storage the capacity proof services use. */
+  readonly proofStorage: ProofArtefactStorage & { readonly keys: () => string[] };
   /** The sales services the app serves (`F-022`). */
   readonly sales: ReturnType<typeof createSales>;
   /** The deterministic payment provider the sales services use. */
@@ -71,6 +84,8 @@ export interface EventsHarness {
   /** The operation id of every command the sponsor was asked to sponsor, in order (`REQ-SP-1`). */
   readonly sponsored: readonly OperationId[];
   organiser(): Promise<TestOrganiser>;
+  /** A Kippu reviewer (`T-021-16`) in a stubbed reviewer session. */
+  reviewer(): Promise<TestReviewer>;
   /**
    * A tRPC client in a holder session linked to a fresh random account. Linking
    * itself belongs to `T-020-06`; the session here is stubbed.
@@ -169,7 +184,29 @@ export async function eventsHarness(options: EventsHarnessOptions = {}): Promise
             authority,
           }),
         };
-  const app: FastifyInstance = buildApp({}, undefined, { auth, events, sales, ...metadata });
+  const proofObjects = new Map<string, { contentType: string; bytes: Uint8Array }>();
+  const proofStorage = {
+    async put(key: string, bytes: Uint8Array, { contentType }: { contentType: string }) {
+      proofObjects.set(key, { contentType, bytes: bytes.slice() });
+    },
+    async get(key: string) {
+      return proofObjects.get(key) ?? null;
+    },
+    keys: () => [...proofObjects.keys()],
+  };
+  const capacityProofs = createCapacityProofs({
+    store: database.store,
+    authority,
+    ledger,
+    storage: proofStorage,
+  });
+  const app: FastifyInstance = buildApp({}, undefined, {
+    auth,
+    events,
+    sales,
+    capacityProofs,
+    ...metadata,
+  });
   const address = await app.listen({ host: "127.0.0.1", port: 0 });
 
   /** A tRPC client in a stubbed holder session for `account`. */
@@ -195,6 +232,8 @@ export async function eventsHarness(options: EventsHarnessOptions = {}): Promise
     ledger,
     authority,
     events,
+    capacityProofs,
+    proofStorage,
     sales,
     payments,
     salesOptions,
@@ -220,6 +259,29 @@ export async function eventsHarness(options: EventsHarnessOptions = {}): Promise
       return createTRPCClient<AppRouter>({
         links: [httpLink({ url: `${address}${TRPC_PREFIX}` })],
       });
+    },
+
+    async reviewer() {
+      const reviewerId = randomUUID();
+      await database.store.query(
+        `INSERT INTO reviewers (id, email, created_at, enrolled_at) VALUES ($1, $2, now(), now())`,
+        [reviewerId, `reviewer-${reviewerId}@kippu.example`],
+      );
+      const sessionId = randomUUID();
+      const token = randomBytes(24).toString("base64url");
+      sessions.set(token, {
+        principal: { kind: "reviewer", reviewerId, sessionId },
+        expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+      });
+      const client = createTRPCClient<AppRouter>({
+        links: [
+          httpLink({
+            url: `${address}${TRPC_PREFIX}`,
+            headers: () => ({ authorization: `Bearer ${token}` }),
+          }),
+        ],
+      });
+      return { reviewerId, sessionId, client };
     },
 
     async organiser() {

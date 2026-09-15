@@ -116,7 +116,7 @@ Event and class documents, the schemas they declare, and the images they referen
 - **Schemas.** `pnpm metadata:publish-schemas` stores every schema file of `@kippu/metadata-schema`, byte for byte, at the key its `$id` names.
 
 ```sh
-pnpm store:up    # also starts MinIO on 127.0.0.1:59000, with the kippu-metadata bucket
+pnpm store:up    # also starts MinIO on 127.0.0.1:59000, with the kippu-metadata and kippu-proofs buckets
 export KIPPU_TEST_S3_ENDPOINT=http://127.0.0.1:59000
 export KIPPU_TEST_S3_ACCESS_KEY_ID=kippu_metadata KIPPU_TEST_S3_SECRET_ACCESS_KEY=kippu_metadata_local
 export KIPPU_METADATA_S3_BUCKET=kippu-metadata KIPPU_METADATA_S3_ENDPOINT=$KIPPU_TEST_S3_ENDPOINT
@@ -195,6 +195,7 @@ Writes Kippu never sees, sent directly by Saifu and Iriguchi, are covered by the
   - **Ledger state and organiser keys live only in memory.** A restart forgets every event and ticket, while the Kippu store keeps its rows; start from a fresh store after a restart.
 - **The derived copy** (`F-025`): the server starts its reader over the ledger's log, and serves the `derived` read routes with their freshness.
 - **Metadata** (`F-026`): event locators name `KIPPU_METADATA_PUBLIC_URL`. When `KIPPU_METADATA_S3_BUCKET` is set, with the rest of the `KIPPU_METADATA_*` keys, document editing is mounted over that storage and reads join the documents. Without it, editing fails, reads join no documents, and everything else is served.
+- **Capacity proofs** (`T-021-08`): artefacts are kept in a private bucket of their own, `KIPPU_PROOFS_S3_BUCKET`, on the same object store and with the same `KIPPU_METADATA_S3_*` keys. It must not be the metadata bucket, which the edge serves publicly. Without it, requests for a capacity increase fail; the review queue and decisions are served. Reviewers decide through `reviewers.capacityProofs`; an approval submits the increase with a random proof id.
 - **`staging`** (`T-023-08`) runs the SDK over `binding-offchain` against a `ticketto-offchain` ledger service.
   - `KIPPU_LEDGER_SERVICE_URL` is the service's endpoint: an http(s) URL, read only in staging. kippu-api holds no credential for the service's store, and refuses any it is given (`REQ-SDK-9`).
   - `KIPPU_SPONSOR_URL` names the sponsor relay. Both are required.

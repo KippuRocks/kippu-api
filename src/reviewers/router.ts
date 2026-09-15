@@ -5,6 +5,7 @@ import type {
   AuthenticationResponseJSON,
   RegistrationResponseJSON,
 } from "../auth/webauthn-json.js";
+import { reviewerCapacityProofsRouter } from "../proofs/router.js";
 import { publicProcedure, router } from "../trpc/trpc.js";
 import {
   ReviewerAuthError,
@@ -79,7 +80,8 @@ const code = z.string().min(1).max(256);
  * Enrolment redeems the one-time code with the reviewer's email and a passkey on
  * Kippu's login RP id; sign-in uses that passkey. Each opens a 12-hour reviewer
  * session, sent as a bearer token like any other. A reviewer session reaches
- * reviewer procedures only, and an organiser session never does.
+ * reviewer procedures only, and an organiser session never does: the capacity
+ * proof review queue (`capacityProofs`, `T-021-08`).
  */
 export const reviewersRouter = router({
   enrolment: router({
@@ -120,4 +122,5 @@ export const reviewersRouter = router({
           mapped(() => ctx.services.reviewers.completeSignIn(input.ceremonyId, input.credential)),
       ),
   }),
+  capacityProofs: reviewerCapacityProofsRouter,
 });
