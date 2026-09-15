@@ -4,6 +4,7 @@ import type { SeatAllocation } from "../events/seats.js";
 import { positionOf } from "../events/zones.js";
 import type { KippuTicketto } from "../ledger/ticketto.js";
 import type { Store } from "../store/store.js";
+import { allocationCounts, capacityHasRoom, lockAllocation, quotaHasRoom } from "./allocation.js";
 import { eventOnSale } from "./on-sale.js";
 import { CheckoutError, type HoldRefusal, type SalesRequest } from "./ports.js";
 
@@ -15,9 +16,6 @@ export const HOLD_EXTENSION_MS = 5 * 60 * 1000;
 
 /** How often outstanding holds past their lifetime are recorded as lapsed. */
 export const LAPSE_SWEEP_INTERVAL_MS = 15 * 1000;
-
-/** The first key of the advisory lock holds are placed under, per event: "hold". */
-const HOLD_LOCK_NAMESPACE = 0x686f6c64;
 
 /** What a hold reserves: the issuance of one ticket for one checkout. */
 export interface HoldTarget {
@@ -64,13 +62,6 @@ export interface HoldsOptions {
   readonly now?: () => Date;
 }
 
-interface Counts {
-  readonly event_holds: string;
-  readonly class_holds: string;
-  readonly granted: string;
-  readonly quota: string | null;
-}
-
 export function createHolds(options: HoldsOptions): Holds {
   const { store, ledger, seats, now = () => new Date() } = options;
 
@@ -79,25 +70,13 @@ export function createHolds(options: HoldsOptions): Holds {
       const client = await store.connect();
       try {
         await client.query("BEGIN");
-        // A seat is locked first, as every allocation of a seat locks it first (T-021-06),
-        // before any capacity or quota accounting, so locks are always taken in one order.
+        // The seat, then the event's allocations, in the one order every allocation of an
+        // event's issuance locks them — holds and granted issuances alike (REQ-HD-3).
         const seat = target.position === null ? null : positionOf(target.position);
-        if (seat !== null) {
-          await seats.lock(client, target.event, target.zone, seat);
-        }
-        // Then holds for one event are placed one at a time: capacity and every class
-        // quota of the event are counted and taken under this lock (REQ-HD-3).
-        await client.query("SELECT pg_advisory_xact_lock($1, hashtext($2))", [
-          HOLD_LOCK_NAMESPACE,
-          target.event,
-        ]);
+        await lockAllocation(client, seats, target);
         const at = now();
-        // A hold stops counting when it expires; its lapse is recorded before counting.
-        await client.query(
-          `UPDATE holds SET status = 'lapsed', ended_at = expires_at
-           WHERE event = $1 AND status = 'outstanding' AND expires_at <= $2`,
-          [target.event, at],
-        );
+        // Expired holds stop counting; what stands against this hold is counted under the locks.
+        const counts = await allocationCounts(client, target, at);
 
         const existing = await client.query<{ status: string }>(
           "SELECT status FROM holds WHERE checkout_id = $1",
@@ -113,47 +92,23 @@ export function createHolds(options: HoldsOptions): Holds {
         }
 
         const event = await eventOnSale(ledger, target.event);
-        const counts = (
-          await client.query<Counts>(
-            `SELECT
-               (SELECT count(*) FROM holds WHERE event = $1 AND status = 'outstanding') AS event_holds,
-               (SELECT count(*) FROM holds WHERE class_id = $2 AND status = 'outstanding') AS class_holds,
-               (SELECT count(*) FROM granted_issuances WHERE event = $1 AND status <> 'rejected')
-                 AS granted,
-               (SELECT quota FROM ticket_classes WHERE id = $2) AS quota`,
-            [target.event, target.classId],
-          )
-        ).rows[0] as Counts;
-
         let refusal: HoldRefusal | null = null;
         if (seat !== null) {
           // The seat is free only if the ledger, Kippu's granted issuances and its
           // outstanding holds all agree (REQ-HD-3, AC-B5.2).
           try {
             await seats.assertFree(client, target.event, target.zone, seat);
-            const held = await client.query(
-              `SELECT 1 FROM holds
-               WHERE event = $1 AND zone = $2 AND position = $3 AND status = 'outstanding'`,
-              [target.event, target.zone, target.position],
-            );
-            if (held.rowCount !== 0) refusal = "seat-taken";
+            if (counts.seatHeld) refusal = "seat-taken";
           } catch (error) {
             if (!(error instanceof SpecCodeError && error.code === "ERR-TicketIdExists"))
               throw error;
             refusal = "seat-taken";
           }
         }
-        if (refusal === null && event.maxCapacity !== null) {
-          // Issued tickets as the ledger counts them, or as Kippu has undertaken to issue
-          // them if the ledger has not yet recorded every one (INV-4).
-          const issued = Math.max(event.issued, Number(counts.granted));
-          if (issued + Number(counts.event_holds) >= event.maxCapacity) refusal = "sold-out";
+        if (refusal === null && !capacityHasRoom(event, counts)) {
+          refusal = "sold-out";
         }
-        if (
-          refusal === null &&
-          counts.quota !== null &&
-          Number(counts.class_holds) >= Number(counts.quota)
-        ) {
+        if (refusal === null && !quotaHasRoom(counts)) {
           refusal = "class-sold-out";
         }
         if (refusal !== null) {
