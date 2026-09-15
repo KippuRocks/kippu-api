@@ -56,6 +56,19 @@ export interface CreateEventInput {
   readonly saleAsset?: SaleAsset | null;
 }
 
+/** A lower capacity for an event (`T-021-07`). */
+export interface DecreaseCapacityInput {
+  readonly event: string;
+  /** No higher than the current capacity; an increase needs a capacity proof (`T-021-08`). */
+  readonly capacity: number;
+}
+
+/** An event's capacity, as the ledger recorded its change. */
+export interface CapacityChanged extends Recorded {
+  readonly event: string;
+  readonly capacity: number | null;
+}
+
 /** An event's pass window to set (`T-021-15`). */
 export interface SetPassWindowInput {
   readonly event: string;
@@ -334,6 +347,16 @@ export interface Events {
     request: EventsRequest,
     input: SetSaleAssetInput,
   ): Promise<EventSaleAsset>;
+  /**
+   * Decreases the capacity of an event the organiser owns (`US-A6`). Refused below
+   * issued tickets plus outstanding holds with `ERR-CapacityBelowIssuance`
+   * (`REQ-HD-4`), and above the current capacity with `ERR-CapacityProofRequired`.
+   */
+  decreaseCapacity(
+    organiserId: string,
+    request: EventsRequest,
+    input: DecreaseCapacityInput,
+  ): Promise<CapacityChanged>;
   /** The pass window of an event the organiser owns, with the bounds it can be set within. */
   passWindow(organiserId: string, input: EventInput): Promise<EventPassWindow>;
   /** Sets the pass window of an event the organiser owns; refused outside its bounds. */

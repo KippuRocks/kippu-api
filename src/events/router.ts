@@ -7,10 +7,12 @@ import { holderProcedure, organiserProcedure, router } from "../trpc/trpc.js";
 import type {
   AddSeatPositionsInput,
   AddZoneInput,
+  CapacityChanged,
   CreatedEvent,
   CreatedInvitation,
   CreateEventInput,
   CreateInvitationInput,
+  DecreaseCapacityInput,
   DefineClassInput,
   EventInput,
   EventPassWindow,
@@ -151,6 +153,8 @@ const defineClassInput = z
   .strict();
 
 const setSaleAssetInput = z.object({ event: id32, asset: saleAsset }).strict();
+
+const decreaseCapacityInput = z.object({ event: id32, capacity: count }).strict();
 
 // Milliseconds; the bounds are checked by the service, whose maximum is the ledger's.
 const setPassWindowInput = z
@@ -332,6 +336,21 @@ export const eventsRouter = router({
       ({ ctx, input }): Promise<EventSaleAsset> =>
         mapped(() =>
           ctx.services.events.setSaleAsset(ctx.principal.organiserId, requestOf(ctx), input),
+        ),
+    ),
+  /**
+   * Decreases the event's capacity (`US-A6`): down to the tickets issued plus
+   * outstanding holds, never below (`ERR-CapacityBelowIssuance`, with
+   * `error.data.reason` `held` when the holds make the difference; `REQ-HD-4`).
+   * An increase is refused with `ERR-CapacityProofRequired`: it needs an approved
+   * capacity proof. The ledger's verdict — `ERR-EventSealed`, say — is passed on.
+   */
+  decreaseCapacity: organiserProcedure
+    .input(parser<DecreaseCapacityInput>(decreaseCapacityInput))
+    .mutation(
+      ({ ctx, input }): Promise<CapacityChanged> =>
+        mapped(() =>
+          ctx.services.events.decreaseCapacity(ctx.principal.organiserId, requestOf(ctx), input),
         ),
     ),
   /**

@@ -24,6 +24,7 @@ import type { MetadataStorage } from "./metadata/storage.js";
 import { type AdmissionReports, createAdmissionReports } from "./operators/reports.js";
 import { createOperators } from "./operators/service.js";
 import { type LapseSweeper, lapseSweeper } from "./sales/holds.js";
+import type { OrganiserSaleActions } from "./sales/organiser-actions.js";
 import { PAYMENT_WEBHOOK_PATH } from "./sales/payment.js";
 import type { PaymentProvider } from "./sales/payments/ports.js";
 import {
@@ -195,10 +196,17 @@ export function createDomainServices(
     relyingParty: config.login,
     holders: { credentials: ledger, holderRpId: config.holderRpId },
   });
+  // Sales are created from events' classes and seats; events' organiser actions reach
+  // sales' organiser actions once both exist (T-022-05).
+  let organiserSaleActions: OrganiserSaleActions | undefined;
   const events = createEvents({
     store,
     authority,
     ledger,
+    saleActions: () => {
+      if (organiserSaleActions === undefined) throw new Error("sales are not wired yet");
+      return organiserSaleActions;
+    },
     maxPassWindow: ledgerLimits().maxPassWindow,
     ...(publicUrl === undefined ? {} : { metadataPublicUrl: publicUrl }),
   });
@@ -237,6 +245,7 @@ export function createDomainServices(
     webhookUrl: new URL(PAYMENT_WEBHOOK_PATH, payments.publicUrl).toString(),
     ...(options.onLapseSweepError === undefined ? {} : { onError: options.onLapseSweepError }),
   });
+  organiserSaleActions = sales.organiserActions;
   // Records lapses, and cancels the hosted checkouts of holds that ended (T-022-04).
   const lapses = lapseSweeper(
     { lapseExpired: () => sales.payments.sweep(`sweep-${randomUUID()}`) },

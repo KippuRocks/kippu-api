@@ -11,7 +11,9 @@
 
 /** Events and classes (`F-021`): sale assets and prices, for Ibento and Ichiba. */
 export type {
+  CapacityChanged,
   CreateEventInput,
+  DecreaseCapacityInput,
   DefineClassInput,
   EventPassWindow,
   EventSaleAsset,
