@@ -111,6 +111,7 @@ function unavailableServices(): Services {
     derived: unavailableService<Services["derived"]>(),
     sales: unavailableService<Services["sales"]>(),
     operators: unavailableService<Services["operators"]>(),
+    reviewers: unavailableService<Services["reviewers"]>(),
   };
 }
 

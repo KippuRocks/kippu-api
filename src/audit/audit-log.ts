@@ -53,6 +53,7 @@ interface Row {
   operator_id: string | null;
   session_id: string | null;
   holder_account: string | null;
+  reviewer_id: string | null;
   operation_id: string;
   command_kind: string;
   recorded_at: Date;
@@ -62,22 +63,38 @@ interface Row {
   completed_at: Date | null;
 }
 
-type PrincipalColumns = [string, string | null, string | null, string | null, string | null];
+type PrincipalColumns = [
+  string,
+  string | null,
+  string | null,
+  string | null,
+  string | null,
+  string | null,
+];
 
 function principalColumns(principal: ActingPrincipal): PrincipalColumns {
   switch (principal.kind) {
     case "anonymous":
-      return ["anonymous", null, null, null, null];
+      return ["anonymous", null, null, null, null, null];
     case "organiser":
-      return ["organiser", principal.organiserId, null, principal.sessionId, null];
+      return ["organiser", principal.organiserId, null, principal.sessionId, null, null];
     case "operator":
-      return ["operator", principal.organiserId, principal.operatorId, principal.sessionId, null];
+      return [
+        "operator",
+        principal.organiserId,
+        principal.operatorId,
+        principal.sessionId,
+        null,
+        null,
+      ];
     case "holder":
-      return ["holder", null, null, principal.sessionId, principal.account];
+      return ["holder", null, null, principal.sessionId, principal.account, null];
+    case "reviewer":
+      return ["reviewer", null, null, principal.sessionId, null, principal.reviewerId];
     case "system":
       // No session: attributed to the organiser who arranged the write; the request id
       // names the task (`scheduled-finish:<schedule id>`).
-      return ["system", principal.organiserId, null, null, null];
+      return ["system", principal.organiserId, null, null, null, null];
   }
 }
 
@@ -102,6 +119,12 @@ function principalOf(row: Row): ActingPrincipal {
         account: row.holder_account as string,
         sessionId: row.session_id as string,
       };
+    case "reviewer":
+      return {
+        kind: "reviewer",
+        reviewerId: row.reviewer_id as string,
+        sessionId: row.session_id as string,
+      };
     case "system":
       return {
         kind: "system",
@@ -116,13 +139,14 @@ function principalOf(row: Row): ActingPrincipal {
 export function createAuditLog(store: Store, now: () => Date = () => new Date()): AuditLog {
   return {
     async record({ requestId, principal, operationId, commandKind }) {
-      const [kind, organiserId, operatorId, sessionId, holderAccount] = principalColumns(principal);
+      const [kind, organiserId, operatorId, sessionId, holderAccount, reviewerId] =
+        principalColumns(principal);
       try {
         await store.query(
           `INSERT INTO audit_log
              (request_id, principal_kind, organiser_id, operator_id, session_id, holder_account,
-              operation_id, command_kind, recorded_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+              reviewer_id, operation_id, command_kind, recorded_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
           [
             requestId,
             kind,
@@ -130,6 +154,7 @@ export function createAuditLog(store: Store, now: () => Date = () => new Date())
             operatorId,
             sessionId,
             holderAccount,
+            reviewerId,
             operationId,
             commandKind,
             now(),
@@ -162,7 +187,7 @@ export function createAuditLog(store: Store, now: () => Date = () => new Date())
 
     async find(operationId) {
       const result = await store.query<Row>(
-        `SELECT request_id, principal_kind, organiser_id, operator_id, session_id, holder_account, operation_id, command_kind,
+        `SELECT request_id, principal_kind, organiser_id, operator_id, session_id, holder_account, reviewer_id, operation_id, command_kind,
                 recorded_at, outcome, receipt_cursor, error_code, completed_at
          FROM audit_log WHERE operation_id = $1`,
         [operationId],

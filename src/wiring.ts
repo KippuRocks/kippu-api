@@ -24,6 +24,7 @@ import { createMetadataDocuments } from "./metadata/documents.js";
 import type { MetadataStorage } from "./metadata/storage.js";
 import { type AdmissionReports, createAdmissionReports } from "./operators/reports.js";
 import { createOperators } from "./operators/service.js";
+import { createReviewers } from "./reviewers/service.js";
 import { type LapseSweeper, lapseSweeper } from "./sales/holds.js";
 import type { OrganiserSaleActions } from "./sales/organiser-actions.js";
 import { PAYMENT_WEBHOOK_PATH } from "./sales/payment.js";
@@ -104,7 +105,10 @@ export interface WiringOptions {
 
 export interface DomainServices {
   /** Metadata editing is absent without object storage; `buildApp` fills it with a failing service. */
-  readonly services: Pick<Services, "auth" | "events" | "derived" | "sales" | "operators"> &
+  readonly services: Pick<
+    Services,
+    "auth" | "events" | "derived" | "sales" | "operators" | "reviewers"
+  > &
     Partial<Pick<Services, "metadata">>;
   readonly ledger: KippuTicketto;
   /** The derived copy's reader over the ledger's log (`NFR-11`); not started. */
@@ -256,7 +260,8 @@ export function createDomainServices(
   );
   const admissionReports = createAdmissionReports({ store });
   const operators = createOperators({ store, ledger, authority, reports: admissionReports });
-  const base = { auth, events, derived, sales, operators };
+  const reviewers = createReviewers({ store, relyingParty: config.login });
+  const base = { auth, events, derived, sales, operators, reviewers };
   const services =
     options.metadataStorage === undefined
       ? base

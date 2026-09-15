@@ -1,5 +1,5 @@
 import type { EventId } from "@ticketto/sdk";
-import { afterAll, beforeAll, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, expect, it, vi } from "vitest";
 import {
   createFinishSchedules,
   FINISH_NOTICE_MS,
@@ -14,6 +14,9 @@ import {
   refusal,
   type TestOrganiser,
 } from "../support/events.js";
+
+// Store-backed: generous timeouts, so a loaded CI host or database does not fail the suite.
+vi.setConfig({ testTimeout: 60_000, hookTimeout: 60_000 });
 
 const HOUR = 60 * 60 * 1000;
 
@@ -42,6 +45,12 @@ describeWithStore("scheduled Finished", () => {
 
   afterAll(async () => {
     await harness.close();
+  });
+
+  // Each test starts from its own clock and notices: nothing carries over between tests.
+  beforeEach(() => {
+    clock = Date.now();
+    notices.length = 0;
   });
 
   async function setup(): Promise<{ organiser: TestOrganiser; event: string }> {

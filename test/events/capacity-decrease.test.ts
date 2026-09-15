@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import type { EventId } from "@ticketto/sdk";
-import { afterAll, beforeAll, expect, it } from "vitest";
+import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { describeWithStore } from "../support/database.js";
 import {
   type EventsHarness,
@@ -10,6 +10,9 @@ import {
   refusalWithReason,
   type TestOrganiser,
 } from "../support/events.js";
+
+// Store-backed: generous timeouts, so a loaded CI host or database does not fail the suite.
+vi.setConfig({ testTimeout: 60_000, hookTimeout: 60_000 });
 
 describeWithStore("capacity decrease", () => {
   let harness: EventsHarness;

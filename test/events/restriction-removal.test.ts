@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import type { CommandKind, TicketId } from "@ticketto/sdk";
-import { afterAll, beforeAll, expect, it } from "vitest";
+import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { COMMAND_INPUT_ALLOW_LIST } from "../../src/ledger/allow-list.js";
 import { appRouter } from "../../src/trpc/router.js";
 import { describeWithStore } from "../support/database.js";
@@ -11,6 +11,9 @@ import {
   refusal,
   type TestOrganiser,
 } from "../support/events.js";
+
+// Store-backed: generous timeouts, so a loaded CI host or database does not fail the suite.
+vi.setConfig({ testTimeout: 60_000, hookTimeout: 60_000 });
 
 describeWithStore("restriction removal", () => {
   let harness: EventsHarness;

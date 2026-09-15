@@ -26,7 +26,9 @@ export async function signIn(
 }
 
 /** A signed-in client sends the session token as a bearer token. */
-export async function whoAmI(token: string): Promise<"organiser" | "operator" | "holder"> {
+export async function whoAmI(
+  token: string,
+): Promise<"organiser" | "operator" | "holder" | "reviewer"> {
   const signedIn = createTRPCClient<AppRouter>({
     links: [
       httpBatchLink({
@@ -124,4 +126,26 @@ export async function linkHolder(
   const expiry: string = challenge.expiresAt;
   void expiry;
   return { account: holder.account, token: session.token };
+}
+
+/** How Ibento's review queue signs a Kippu reviewer in (`T-021-16`): a passkey on the login RP id. */
+export async function reviewerSignIn(
+  email: string,
+  getAssertion: (
+    options: Awaited<
+      ReturnType<
+        ReturnType<typeof createTRPCClient<AppRouter>>["reviewers"]["signIn"]["begin"]["mutate"]
+      >
+    >["options"],
+  ) => Promise<Assertion>,
+): Promise<{ token: string; expiresAt: string }> {
+  const anonymous = createTRPCClient<AppRouter>({
+    links: [httpBatchLink({ url: "http://127.0.0.1:8080/v0/trpc" })],
+  });
+  const challenge = await anonymous.reviewers.signIn.begin.mutate({ email });
+  const { session } = await anonymous.reviewers.signIn.complete.mutate({
+    ceremonyId: challenge.ceremonyId,
+    credential: await getAssertion(challenge.options),
+  });
+  return session;
 }

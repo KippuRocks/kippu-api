@@ -512,14 +512,18 @@ export function createAuth({
     async authenticate(token) {
       const result = await store.query<{
         id: string;
-        principal_kind: "organiser" | "operator" | "holder";
+        principal_kind: "organiser" | "operator" | "holder" | "reviewer";
         organiser_id: string | null;
         operator_id: string | null;
         holder_account: string | null;
+        reviewer_id: string | null;
         expires_at: Date;
       }>(
-        `SELECT id, principal_kind, organiser_id, operator_id, holder_account, expires_at FROM sessions
-         WHERE token_hash = $1 AND revoked_at IS NULL AND expires_at > $2`,
+        `SELECT s.id, s.principal_kind, s.organiser_id, s.operator_id, s.holder_account,
+                s.reviewer_id, s.expires_at
+         FROM sessions s LEFT JOIN reviewers r ON r.id = s.reviewer_id
+         WHERE s.token_hash = $1 AND s.revoked_at IS NULL AND s.expires_at > $2
+           AND r.disabled_at IS NULL`,
         [hashSecret(token), now()],
       );
       const row = result.rows[0];
@@ -541,6 +545,15 @@ export function createAuth({
         case "holder":
           return {
             principal: { kind: "holder", account: row.holder_account as string, sessionId: row.id },
+            expiresAt,
+          } satisfies SessionInfo;
+        case "reviewer":
+          return {
+            principal: {
+              kind: "reviewer",
+              reviewerId: row.reviewer_id as string,
+              sessionId: row.id,
+            },
             expiresAt,
           } satisfies SessionInfo;
         default:

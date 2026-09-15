@@ -101,6 +101,15 @@ jobs:
         run: |
           pnpm migrate
           pnpm migrate | grep -Fx "the store is up to date"
+      - name: Reviewers are created and disabled from the command line, never over HTTP
+        run: |
+          pnpm reviewer:create --email ci-reviewer@kippu.example | grep -F "enrolment code:"
+          if pnpm reviewer:create --email ci-reviewer@kippu.example; then
+            echo "the command line created a second reviewer with the same email" >&2
+            exit 1
+          fi
+          pnpm reviewer:reissue-code --email ci-reviewer@kippu.example | grep -F "enrolment code:"
+          pnpm reviewer:disable --email ci-reviewer@kippu.example | grep -F "disabled reviewer"
       - name: No metadata schema declares a personal-data field
         run: pnpm lint:personal-data
       - name: A deny-listed field fails the personal-data lint

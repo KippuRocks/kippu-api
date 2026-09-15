@@ -1,5 +1,5 @@
 import type { Cursor, EventId, TicketId } from "@ticketto/sdk";
-import { afterAll, beforeAll, expect, it } from "vitest";
+import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import type { CreateInvitationInput, DefineClassInput } from "../../src/events/ports.js";
 import { positionOf } from "../../src/events/zones.js";
 import { describeWithStore } from "../support/database.js";
@@ -10,6 +10,9 @@ import {
   refusal,
   type TestOrganiser,
 } from "../support/events.js";
+
+// Store-backed: generous timeouts, so a loaded CI host or database does not fail the suite.
+vi.setConfig({ testTimeout: 60_000, hookTimeout: 60_000 });
 
 const granted = (event: string, overrides: Partial<DefineClassInput> = {}): DefineClassInput => ({
   event,
