@@ -6,6 +6,7 @@ import { createEventWith } from "./create-event.js";
 import { createInvitations, type Invitations } from "./invitations.js";
 import { issueGrantedWith } from "./issuance.js";
 import type { Events } from "./ports.js";
+import { createSeatAllocation, type SeatAllocation } from "./seats.js";
 import { createZones, type Zones } from "./zones.js";
 
 export interface EventsOptions {
@@ -25,15 +26,19 @@ export function createEvents(options: EventsOptions): Events & {
   readonly classes: Classes;
   readonly zones: Zones;
   readonly invitations: Invitations;
+  /** The seated double-allocation pre-check, for every way of allocating a seat (`F-022` holds). */
+  readonly seats: SeatAllocation;
 } {
   const classes = createClasses(options);
   const zones = createZones(options);
-  const issueGranted = issueGrantedWith({ ...options, classes, zones });
+  const seats = createSeatAllocation(options);
+  const issueGranted = issueGrantedWith({ ...options, classes, zones, seats });
   const invitations = createInvitations({ ...options, classes, zones, issueGranted });
   return {
     classes,
     zones,
     invitations,
+    seats,
     createEvent: createEventWith(options),
     addZone: (organiserId, request, input) => zones.addZone(organiserId, request, input),
     removeZone: (organiserId, request, input) => zones.removeZone(organiserId, request, input),

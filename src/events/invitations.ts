@@ -19,7 +19,7 @@ import type {
   RedeemedInvitation,
   RedeemInvitationInput,
 } from "./ports.js";
-import type { Zones } from "./zones.js";
+import { normaliseDesignation, type Zones } from "./zones.js";
 
 /** Bytes of randomness in an invitation token. */
 export const INVITATION_TOKEN_BYTES = 32;
@@ -167,7 +167,7 @@ export function createInvitations(options: InvitationsOptions): Invitations {
           input.class,
           input.zone,
           input.placement.kind,
-          input.placement.kind === "Seated" ? input.placement.position : null,
+          input.placement.kind === "Seated" ? normaliseDesignation(input.placement.position) : null,
           input.guest,
           organiserId,
           request.requestId,

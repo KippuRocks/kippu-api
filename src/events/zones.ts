@@ -17,16 +17,26 @@ import type {
 export const MAX_DESIGNATION_LENGTH = 100;
 
 /**
- * The ledger `Position` of a seat designation: its UTF-8 bytes, as lower-case
- * hex. The ledger treats a position as opaque bytes (`F-003` plan §5.7), so the
- * designation on the zone's canonical list is exactly what its ticket's identity
- * is derived from (`REQ-ID-1`).
+ * A seat designation in Unicode NFC, the form it is stored and derived from
+ * (`F-021` plan §7a): two visually identical designations — `Ć` precomposed, and
+ * `C` with a combining acute — are one seat. Case and punctuation are kept:
+ * `C-14` and `c14` stay two designations.
  */
-export function positionOf(designation: string): Position {
+export function normaliseDesignation(designation: string): string {
   if (!designation.isWellFormed()) {
     throw new TypeError("a seat designation must be well-formed Unicode");
   }
-  return Buffer.from(designation, "utf8").toString("hex") as Position;
+  return designation.normalize("NFC");
+}
+
+/**
+ * The ledger `Position` of a seat designation: the UTF-8 bytes of its NFC form,
+ * as lower-case hex. The ledger treats a position as opaque bytes (`F-003` plan
+ * §5.7), so the designation on the zone's canonical list is exactly what its
+ * ticket's identity is derived from (`REQ-ID-1`).
+ */
+export function positionOf(designation: string): Position {
+  return Buffer.from(normaliseDesignation(designation), "utf8").toString("hex") as Position;
 }
 
 export interface Zones {
@@ -39,7 +49,7 @@ export interface Zones {
   ): Promise<SeatPositions>;
   seatPositions(organiserId: string, input: ZoneInput): Promise<SeatPositions>;
   /**
-   * The ledger `Position` of `designation`, provided it is one of the zone's
+   * The ledger `Position` of `designation`, in NFC, provided it is one of the zone's
    * canonical positions. Anything else — a position the organiser never
    * uploaded, a case or punctuation variant of one, a zone with no list —
    * throws `RefusedRequest`, so issuance refuses it before anything is signed
@@ -114,21 +124,20 @@ export function createZones(options: ZonesOptions): Zones {
       if (zone.kind !== "Seated") {
         throw new SpecCodeError("ERR-ZoneKindMismatch", "only a seated zone has seat positions");
       }
+      const positions: string[] = [];
       for (const designation of input.positions) {
-        if (
-          designation.length === 0 ||
-          designation.length > MAX_DESIGNATION_LENGTH ||
-          !designation.isWellFormed()
-        ) {
+        const normalised = designation.isWellFormed() ? normaliseDesignation(designation) : "";
+        if (normalised.length === 0 || normalised.length > MAX_DESIGNATION_LENGTH) {
           throw new RefusedRequest("a seat position is 1 to 100 characters of well-formed Unicode");
         }
+        positions.push(normalised);
       }
       await store.query(
         `INSERT INTO seat_positions (event, zone, designation, created_request_id, created_at)
          SELECT $1, $2, designation, $4, $5 FROM unnest($3::text[]) WITH ORDINALITY AS u(designation, n)
          ORDER BY n
          ON CONFLICT (event, zone, designation) DO NOTHING`,
-        [input.event, input.zone, input.positions, request.requestId, now()],
+        [input.event, input.zone, positions, request.requestId, now()],
       );
       return positionsOf(input.event, input.zone);
     },
@@ -139,16 +148,20 @@ export function createZones(options: ZonesOptions): Zones {
     },
 
     async canonicalPosition(event, zone, designation) {
-      const found = await store.query(
-        "SELECT 1 FROM seat_positions WHERE event = $1 AND zone = $2 AND designation = $3",
-        [event, zone, designation],
-      );
+      const normalised = designation.isWellFormed() ? normaliseDesignation(designation) : null;
+      const found =
+        normalised === null
+          ? { rowCount: 0 }
+          : await store.query(
+              "SELECT 1 FROM seat_positions WHERE event = $1 AND zone = $2 AND designation = $3",
+              [event, zone, normalised],
+            );
       if (found.rowCount !== 1) {
         throw new RefusedRequest(
           `"${designation}" is not one of the zone's canonical seat positions`,
         );
       }
-      return positionOf(designation);
+      return positionOf(normalised as string);
     },
   };
 }
