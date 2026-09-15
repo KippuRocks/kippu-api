@@ -1,0 +1,213 @@
+import { randomBytes, randomUUID } from "node:crypto";
+import { afterAll, beforeAll, expect, it } from "vitest";
+import type { AdmissionReportInput } from "../../src/operators/ports.js";
+import { type AdmissionReports, createAdmissionReports } from "../../src/operators/reports.js";
+import { describeWithStore } from "../support/database.js";
+import {
+  type Client,
+  type OperatorHarness,
+  operatorHarness,
+  refused,
+} from "../support/operator-harness.js";
+
+const HOUR = 60 * 60 * 1000;
+const hex = (bytes: number) => randomBytes(bytes).toString("hex");
+
+describeWithStore("admission reports", () => {
+  let harness: OperatorHarness;
+  /** What F-025 reads, over the same store. */
+  let reports: AdmissionReports;
+
+  beforeAll(async () => {
+    harness = await operatorHarness();
+    reports = createAdmissionReports({ store: harness.database.store });
+  });
+
+  afterAll(async () => {
+    await harness.close();
+  });
+
+  interface Gate {
+    readonly organiser: Client;
+    readonly event: string;
+    readonly operator: string;
+    readonly device: Client;
+    readonly grant: string;
+  }
+
+  /** An operator signed in on a device, granted `gates` of `event`. */
+  async function gate(
+    organiser: { organiserId: string; client: Client },
+    event: string,
+    gates: string[] = ["North door"],
+  ): Promise<Gate> {
+    const { client } = organiser;
+    const { id: operator } = await client.operators.create.mutate({ name: "Gate staff" });
+    const { code } = await client.operators.issueEnrolmentCode.mutate({ operator });
+    const { session } = await harness.client().auth.operator.redeemEnrolmentCode.mutate({ code });
+    const from = harness.now().getTime();
+    const { id: grant } = await client.operators.grants.create.mutate({
+      operator,
+      event,
+      gates,
+      from,
+      until: from + 4 * HOUR,
+    });
+    return { organiser: client, event, operator, device: harness.client(session.token), grant };
+  }
+
+  async function venue() {
+    const organiser = await harness.organiser();
+    const event = await harness.createEvent(organiser.organiserId);
+    return { organiser, event };
+  }
+
+  const admitted = (
+    event: string,
+    overrides: Partial<AdmissionReportInput> = {},
+  ): AdmissionReportInput => ({
+    reportId: randomUUID(),
+    event,
+    gate: "North door",
+    ticket: hex(32),
+    passId: hex(16),
+    verdict: { kind: "admitted", submission: { outcome: "settled", cursor: "42" } },
+    presentedAt: harness.now().getTime() - 1500,
+    deviceClock: harness.now().getTime() + 12_000,
+    ...overrides,
+  });
+
+  it("REQ-OP-3: reports are stored and queryable by F-025", async () => {
+    const { organiser, event } = await venue();
+    const north = await gate(organiser, event, ["North door"]);
+    const south = await gate(organiser, event, ["South door"]);
+    const ticket = hex(32);
+    const passId = hex(16);
+
+    // The same pass admitted at two gates: the ledger records one and refuses the other.
+    const first = admitted(event, { ticket, passId });
+    const second = admitted(event, {
+      gate: "South door",
+      ticket,
+      passId,
+      verdict: {
+        kind: "admitted",
+        submission: { outcome: "rejected", errorCode: "ERR-PassReplayed" },
+      },
+    });
+    const refusal = admitted(event, {
+      verdict: { kind: "refused", reason: "ERR-PassExpired" },
+    });
+    const failed = admitted(event, {
+      verdict: { kind: "admitted", submission: { outcome: "failed" } },
+    });
+
+    const recorded = await north.device.operators.reportAdmission.mutate(first);
+    expect(recorded).toEqual({
+      ...first,
+      operator: north.operator,
+      receivedAt: harness.now().getTime(),
+    });
+    await south.device.operators.reportAdmission.mutate(second);
+    await north.device.operators.reportAdmission.mutate(refusal);
+    await north.device.operators.reportAdmission.mutate(failed);
+
+    const forPass = await reports.list({ passId });
+    expect(forPass.reports).toMatchObject([
+      { ...first, operator: north.operator, organiserId: organiser.organiserId },
+      { ...second, operator: south.operator, organiserId: organiser.organiserId },
+    ]);
+    // The gate's clock is kept beside Kippu's, so drift can be flagged (F-025 plan §5.5).
+    const [stored] = forPass.reports;
+    expect((stored?.deviceClock ?? 0) - (stored?.receivedAt ?? 0)).toBe(12_000);
+
+    const forEvent = await reports.list({ event });
+    expect(forEvent.reports.map((report) => report.reportId)).toEqual([
+      first.reportId,
+      second.reportId,
+      refusal.reportId,
+      failed.reportId,
+    ]);
+    expect(forEvent.reports[2]?.verdict).toEqual({ kind: "refused", reason: "ERR-PassExpired" });
+
+    // Paging, in the order received.
+    const page = await reports.list({ event, limit: 3 });
+    expect(page.reports).toHaveLength(3);
+    const rest = await reports.list({ event, after: page.next });
+    expect(rest.reports.map((report) => report.reportId)).toEqual([failed.reportId]);
+    expect(await reports.list({ event, after: rest.next })).toEqual({
+      reports: [],
+      next: rest.next,
+    });
+  });
+
+  it("a report sent again is recorded once", async () => {
+    const { organiser, event } = await venue();
+    const north = await gate(organiser, event);
+    const report = admitted(event);
+
+    const once = await north.device.operators.reportAdmission.mutate(report);
+    harness.advance(5_000);
+    expect(await north.device.operators.reportAdmission.mutate(report)).toEqual(once);
+    expect((await reports.list({ passId: report.passId })).reports).toHaveLength(1);
+  });
+
+  it("another operator's report id is refused", async () => {
+    const { organiser, event } = await venue();
+    const north = await gate(organiser, event);
+    const south = await gate(organiser, event);
+    const report = admitted(event);
+    await north.device.operators.reportAdmission.mutate(report);
+
+    expect(await refused(() => south.device.operators.reportAdmission.mutate(report))).toEqual({
+      code: "CONFLICT",
+      reason: "report-exists",
+    });
+  });
+
+  it("an operator reports only at gates they were granted, revoked or ended grants included", async () => {
+    const { organiser, event } = await venue();
+    const other = await venue();
+    const north = await gate(organiser, event);
+
+    for (const report of [admitted(event, { gate: "West door" }), admitted(other.event)]) {
+      expect(await refused(() => north.device.operators.reportAdmission.mutate(report))).toEqual({
+        code: "FORBIDDEN",
+        reason: "not-granted",
+      });
+    }
+
+    // An admission's outcome can arrive after its grant was revoked or ended.
+    await organiser.client.operators.grants.revoke.mutate({ grant: north.grant });
+    harness.advance(5 * HOUR);
+    await expect(
+      north.device.operators.reportAdmission.mutate(admitted(event)),
+    ).resolves.toBeDefined();
+  });
+
+  it("a report names its outcome with a §10 code, and only an operator sends one", async () => {
+    const { organiser, event } = await venue();
+    const north = await gate(organiser, event);
+
+    for (const overrides of [
+      {
+        verdict: {
+          kind: "admitted",
+          submission: { outcome: "rejected", errorCode: "replayed" },
+        },
+      },
+      { verdict: { kind: "refused", reason: "" } },
+      { passId: hex(32) },
+      { reportId: "not-a-uuid" },
+    ] as Partial<AdmissionReportInput>[]) {
+      expect(
+        await refused(() =>
+          north.device.operators.reportAdmission.mutate(admitted(event, overrides)),
+        ),
+      ).toMatchObject({ code: "BAD_REQUEST" });
+    }
+    expect(
+      await refused(() => organiser.client.operators.reportAdmission.mutate(admitted(event))),
+    ).toMatchObject({ code: "FORBIDDEN", reason: null });
+  });
+});

@@ -20,6 +20,7 @@ import { type ReceiptTracker, trackReceipts } from "./ledger/receipts.js";
 import { type KippuTicketto, makeTicketto } from "./ledger/ticketto.js";
 import { createMetadataDocuments } from "./metadata/documents.js";
 import type { MetadataStorage } from "./metadata/storage.js";
+import { type AdmissionReports, createAdmissionReports } from "./operators/reports.js";
 import { createOperators } from "./operators/service.js";
 import { type LapseSweeper, lapseSweeper } from "./sales/holds.js";
 import { PAYMENT_WEBHOOK_PATH } from "./sales/payment.js";
@@ -108,6 +109,8 @@ export interface DomainServices {
   readonly freshness: Freshness;
   /** Records lapsed holds in the background (`T-022-03`); not started. */
   readonly lapses: LapseSweeper;
+  /** Iriguchi's admission reports (`T-024-04`), for `F-025`'s provisional-admission flags. */
+  readonly admissionReports: AdmissionReports;
   /**
    * The test payment provider end-to-end suites may drive over HTTP, in
    * `development` and `test` when it is the provider in use; `null` otherwise.
@@ -121,7 +124,7 @@ const NO_METADATA_STORAGE: Pick<MetadataStorage, "get"> = { get: async () => nul
 /**
  * The domain services the server mounts, over the ledger its environment names
  * (`T-021-11`): identity and holder linking (`F-020`); events, zones, classes
- * and granted issuance (`F-021`); checkout (`F-022`); operator accounts and grants (`F-024`);
+ * and granted issuance (`F-021`); checkout (`F-022`); operator accounts, grants, the check and admission reports (`F-024`);
  * the derived copy's reader
  * and read routes (`F-025`); and, given object storage, metadata document editing (`F-026`).
  *
@@ -235,7 +238,8 @@ export function createDomainServices(
     { lapseExpired: () => sales.payments.sweep(`sweep-${randomUUID()}`) },
     options.onLapseSweepError,
   );
-  const operators = createOperators({ store, ledger, authority });
+  const admissionReports = createAdmissionReports({ store });
+  const operators = createOperators({ store, ledger, authority, reports: admissionReports });
   const base = { auth, events, derived, sales, operators };
   const services =
     options.metadataStorage === undefined
@@ -255,7 +259,7 @@ export function createDomainServices(
     isTestPaymentProvider(payments.provider)
       ? payments.provider
       : null;
-  return { services, ledger, reader, freshness, lapses, testingPayments };
+  return { services, ledger, reader, freshness, lapses, admissionReports, testingPayments };
 }
 
 export interface KippuServer {

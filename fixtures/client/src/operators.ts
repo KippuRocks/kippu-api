@@ -1,4 +1,5 @@
 import type {
+  AdmissionSubmission,
   AppRouter,
   CheckRefusal,
   EnrolmentCode,
@@ -84,11 +85,35 @@ export async function mayAdmit(
   }
 }
 
+/**
+ * How Iriguchi reports an admission once its submission has ended (`T-024-04`,
+ * `REQ-OP-3`). The report id is its own, so a retry is recorded once.
+ */
+export async function reportAdmission(
+  operatorToken: string,
+  scan: { reportId: string; event: string; gate: string; ticket: string; passId: string },
+  presentedAt: number,
+  submission: AdmissionSubmission,
+): Promise<number> {
+  const { receivedAt } = await signedIn(operatorToken).operators.reportAdmission.mutate({
+    ...scan,
+    verdict: { kind: "admitted", submission },
+    presentedAt,
+    deviceClock: Date.now(),
+  });
+  return receivedAt;
+}
+
 /** The reason an operator request was refused, typed from the router's error shape. */
 export function operatorRefusal(error: unknown): OperatorRefusal | null {
   if (error instanceof TRPCClientError) {
     const reason = (error as TRPCClientError<AppRouter>).data?.reason;
-    return reason === "unknown-operator" || reason === "unknown-grant" ? reason : null;
+    return reason === "unknown-operator" ||
+      reason === "unknown-grant" ||
+      reason === "not-granted" ||
+      reason === "report-exists"
+      ? reason
+      : null;
   }
   return null;
 }

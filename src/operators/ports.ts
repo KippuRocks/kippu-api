@@ -133,13 +133,67 @@ export interface OperatorAuthorisation {
 export type CheckRefusal = "grant-revoked" | "before-window" | "after-window" | "not-granted";
 
 /**
+ * How an admission's direct submission to the ledger ended (`REQ-CL-3`): settled
+ * with the receipt's log cursor, rejected with the ledger's §10 code, or failed
+ * with no verdict. For an access pass the receipt's operation id is the pass id.
+ */
+export type AdmissionSubmission =
+  | { readonly outcome: "settled"; readonly cursor: string }
+  | { readonly outcome: "rejected"; readonly errorCode: string }
+  | { readonly outcome: "failed" };
+
+/**
+ * What Iriguchi reports after a verdict at a gate (`F-024` plan §5.3), for
+ * `F-025`'s provisional-admission flags (`REQ-OP-3`). Every time and outcome in it
+ * is as the gate claims: a report is evidence for the organiser, never a ledger fact.
+ */
+export interface AdmissionReportInput {
+  /** Chosen by Iriguchi, a UUID: a report sent again with the same id is recorded once. */
+  readonly reportId: string;
+  /** The `EventId`, 64 lower-case hex characters. */
+  readonly event: string;
+  /** The gate label, exactly as the operator's grant names it. */
+  readonly gate: string;
+  /** The `TicketId` the pass designates, 64 lower-case hex characters. */
+  readonly ticket: string;
+  /** The pass id, 32 lower-case hex characters. */
+  readonly passId: string;
+  /** For an admission, how its submission ended; a refusal is never submitted. */
+  readonly verdict:
+    | { readonly kind: "admitted"; readonly submission: AdmissionSubmission }
+    | {
+        readonly kind: "refused";
+        /** The reason the gate showed: a §10 code, or a platform reason such as `grant-revoked`. */
+        readonly reason: string;
+      };
+  /** Unix milliseconds: the presentation time the pass was submitted with (`presentedAt`). */
+  readonly presentedAt: number;
+  /** Unix milliseconds: the device's own, unadjusted clock when it sent the report. */
+  readonly deviceClock: number;
+}
+
+/** A report as Kippu recorded it. */
+export interface AdmissionReport extends AdmissionReportInput {
+  readonly operator: string;
+  /** Unix milliseconds: Kippu's clock when it first received the report. */
+  readonly receivedAt: number;
+}
+
+/**
  * Why an operator request was refused, in `error.data.reason`. A platform
  * reason, never a §10 code.
  *
  * - `unknown-operator` — no operator of the signed-in organiser has this id.
  * - `unknown-grant` — no grant of the signed-in organiser has this id.
+ * - `not-granted` — an admission report for a gate of an event the operator was
+ *   never granted (`FORBIDDEN`).
+ * - `report-exists` — another operator's report already has this report id (`CONFLICT`).
  */
-export type OperatorRefusal = "unknown-operator" | "unknown-grant";
+export type OperatorRefusal =
+  | "unknown-operator"
+  | "unknown-grant"
+  | "not-granted"
+  | "report-exists";
 
 /**
  * Operator accounts (`T-024-01`). Every method acts for one organiser, and
@@ -195,4 +249,15 @@ export interface Operators {
    * so a revocation refuses the next check. Refused with a {@link CheckRefusal}.
    */
   check(operator: OperatorPrincipal, input: CheckInput): Promise<OperatorAuthorisation>;
+  /**
+   * Records the signed-in operator's report of a verdict (`T-024-04`), at a gate
+   * of an event they hold or held a grant for — revoked and ended grants included,
+   * since an admission's outcome can arrive after either. Sending the same report
+   * id again answers the report first recorded.
+   */
+  reportAdmission(
+    operator: OperatorPrincipal,
+    request: OperatorsRequest,
+    input: AdmissionReportInput,
+  ): Promise<AdmissionReport>;
 }
