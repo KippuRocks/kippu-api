@@ -25,6 +25,7 @@ const PUBLIC_PROCEDURES = [
   "sales.checkout.discardLink",
   "sales.checkout.get",
   "sales.checkout.hold",
+  "sales.inventory",
   "system.health",
 ];
 

@@ -5,6 +5,7 @@ import type {
   HandoffLink,
   HoldRefusal,
   SaifuHandoff,
+  SaleInventory,
 } from "@kippu/api";
 import { createTRPCClient, httpBatchLink } from "@trpc/client";
 
@@ -44,4 +45,10 @@ export async function holdCheckout(token: string): Promise<HoldRefusal | Checkou
   const ichiba = createTRPCClient<AppRouter>({ links: [httpBatchLink({ url })] });
   const result = await ichiba.sales.checkout.hold.mutate({ token });
   return result.outcome === "held" ? result.checkout : result.reason;
+}
+
+/** How Ichiba reads what it can offer of an event, with no session (`T-022-10`). */
+export async function inventory(event: string): Promise<SaleInventory> {
+  const ichiba = createTRPCClient<AppRouter>({ links: [httpBatchLink({ url })] });
+  return ichiba.sales.inventory.query({ event });
 }

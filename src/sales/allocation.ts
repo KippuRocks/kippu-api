@@ -107,20 +107,56 @@ export async function allocationCounts(
 }
 
 /**
- * Whether one more allocation fits the event's capacity (`INV-4`, `REQ-HD-3`):
- * tickets issued as the ledger counts them — or as Kippu has undertaken to issue
- * them, if the ledger has not yet recorded every one — plus outstanding holds.
+ * How many more allocations the event's capacity admits (`INV-4`, `REQ-HD-3`):
+ * its capacity less tickets issued as the ledger counts them — or as Kippu has
+ * undertaken to issue them, if the ledger has not yet recorded every one — and
+ * outstanding holds. `null` when issuance is unbounded.
  */
+export function capacityRemaining(
+  event: Pick<Event, "maxCapacity" | "issued">,
+  counts: AllocationCounts,
+): number | null {
+  if (event.maxCapacity === null) return null;
+  const issued = Math.max(event.issued, counts.granted);
+  return Math.max(0, event.maxCapacity - issued - counts.eventHolds);
+}
+
+/** Whether one more allocation fits the event's capacity (`INV-4`, `REQ-HD-3`). */
 export function capacityHasRoom(
   event: Pick<Event, "maxCapacity" | "issued">,
   counts: AllocationCounts,
 ): boolean {
-  if (event.maxCapacity === null) return true;
-  const issued = Math.max(event.issued, counts.granted);
-  return issued + counts.eventHolds < event.maxCapacity;
+  const remaining = capacityRemaining(event, counts);
+  return remaining === null || remaining > 0;
+}
+
+/**
+ * How many more allocations the class quota admits (`REQ-TC-5`, `REQ-HD-3`):
+ * holds and granted issuances together. `null` for a class with no quota.
+ */
+export function quotaRemaining(counts: AllocationCounts): number | null {
+  if (counts.quota === null) return null;
+  return Math.max(0, counts.quota - counts.classHolds - counts.classGranted);
 }
 
 /** Whether one more allocation fits the class quota (`REQ-TC-5`, `REQ-HD-3`): holds and granted issuances together. */
 export function quotaHasRoom(counts: AllocationCounts): boolean {
-  return counts.quota === null || counts.classHolds + counts.classGranted < counts.quota;
+  const remaining = quotaRemaining(counts);
+  return remaining === null || remaining > 0;
+}
+
+/** The canonical designations of a zone's seats outstanding holds hold. */
+export async function heldPositions(
+  db: Queryable,
+  event: string,
+  zone: string,
+  at: Date,
+): Promise<ReadonlySet<string>> {
+  const result = await db.query<{ position: string }>(
+    `SELECT position FROM holds
+     WHERE event = $1 AND zone = $2 AND position IS NOT NULL AND status = 'outstanding'
+       AND expires_at > $3`,
+    [event, zone, at],
+  );
+  return new Set(result.rows.map((row) => row.position));
 }
