@@ -16,7 +16,7 @@ export async function wholeLog(log: LogReader): Promise<LogRecord[]> {
 
 /**
  * A log serving the given records, with cursors `"0"`, `"1"`, … in order, as
- * `backend-memory` issues them. For records the ledger's rules cannot yet
+ * `backend-memory` issues them. For records the ledger's rules never
  * produce; its hints never arrive.
  */
 export function scriptedLog(records: readonly Omit<LogRecord, "cursor">[]): {

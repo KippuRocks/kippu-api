@@ -1,6 +1,6 @@
 {
   "repository": "https://github.com/KippuRocks/libticketto.git",
-  "commit": "d67edc4d96878b4fc70ab84d9643369449a10ba4",
+  "commit": "a2f0df4c9b18c74526d74ca0c030f983f4566080",
   "packages": [
     {
       "file": "ticketto-backend-memory-0.0.0.tgz",
@@ -8,11 +8,11 @@
     },
     {
       "file": "ticketto-binding-offchain-0.0.0.tgz",
-      "sha256": "6869b67f81faada0aa84a57b55e9c345d75606787afa825229aed353a88add77"
+      "sha256": "64c95009be87491781f6e2468a3c0e41a558ecfb886aaabeece5699d16180e77"
     },
     {
       "file": "ticketto-ledger-rules-0.0.0.tgz",
-      "sha256": "5cf8c283fc1bcc38fda412a98646660ff27bcc95ad91830851bec3ecc7d66d50"
+      "sha256": "0826ac5f754a640ff2d6ea72b18583993f29318921607a726f92abc2c51fa92e"
     },
     {
       "file": "ticketto-log-0.0.0.tgz",

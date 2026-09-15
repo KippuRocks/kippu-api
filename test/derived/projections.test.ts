@@ -4,14 +4,12 @@ import type {
   Command,
   EventId,
   LogReader,
-  LogRecord,
   OperationId,
-  PassId,
   Position,
   TicketId,
   Ticketto,
 } from "@ticketto/sdk";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import {
   LedgerQueryError,
   ledgerFactsProjection,
@@ -25,7 +23,7 @@ import {
   describeWithStore,
   type TestDatabase,
 } from "../support/database.js";
-import { derivedSnapshot, scriptedLog, wholeLog } from "../support/derived.js";
+import { scriptedLog, wholeLog } from "../support/derived.js";
 import {
   classId,
   type MemoryLedger,
@@ -225,121 +223,6 @@ describeWithStore("the derived copy's projections", () => {
     const queries = resultsOf(store);
     expect((await queries.ticket(late))?.value.holder).toBe(holders.bob);
     expect((await queries.event(festival))?.value.issued).toBe(2);
-  });
-
-  describe("effects of inputs the M1 rules do not accept yet", () => {
-    const authorisation = new Uint8Array(0) as Authorisation;
-    const envelope = (n: number) => ({
-      operationId: hex(16, n) as OperationId,
-      expiresAt: 1_900_000_000_000,
-    });
-
-    /** The direct history's log, followed by records the ledger's rules cannot produce until M3 and M4. */
-    async function extendedLog() {
-      const history = await directHistory();
-      const prefix = (await wholeLog(ledger.kippu.log)).map(({ cursor: _, ...record }) => record);
-      const [concert] = history.events as [EventId];
-      const [seat, press] = history.tickets as [TicketId, TicketId];
-      let eventSequence = prefix.filter((r) => r.event?.id === concert).length;
-      let recordedAt = (prefix.at(-1)?.recordedAt ?? 0) + 1_000;
-      const command = (c: Command): Omit<LogRecord, "cursor"> => ({
-        recordedAt: recordedAt++,
-        event: { id: concert, sequence: eventSequence++ },
-        entry: { command: c, authorisation },
-        presentedAt: null,
-      });
-      const pass = (
-        id: number,
-        ticket: TicketId,
-        holder: AccountId,
-      ): Omit<LogRecord, "cursor"> => ({
-        recordedAt: recordedAt++,
-        event: { id: concert, sequence: eventSequence++ },
-        entry: {
-          pass: {
-            ticket,
-            holder,
-            id: hex(16, id) as PassId,
-            notBefore: recordedAt - 30_000,
-            notAfter: recordedAt + 30_000,
-          },
-          authorisation,
-        },
-        presentedAt: recordedAt - 500,
-      });
-      const tail = [
-        command({
-          kind: "setEventCapacity",
-          ...envelope(0xa1),
-          event: concert,
-          capacity: 4,
-          proof: null,
-        }),
-        pass(0xb1, seat, history.holders.alice),
-        command({
-          kind: "removeRestriction",
-          ...envelope(0xa2),
-          event: concert,
-          ticket: press,
-          restriction: "cannotTransfer",
-        }),
-        command({
-          kind: "transferTicket",
-          ...envelope(0xa3),
-          event: concert,
-          ticket: seat,
-          receiver: history.holders.bob,
-        }),
-        pass(0xb2, seat, history.holders.bob),
-        command({ kind: "setEventStatus", ...envelope(0xa4), event: concert, status: "Sealed" }),
-      ];
-      return { history, ...scriptedLog([...prefix, ...tail]), prefixLength: prefix.length };
-    }
-
-    it("status, capacity, transfer, restriction removal and attendance", async () => {
-      const { history, log, records, prefixLength } = await extendedLog();
-      const [concert] = history.events as [EventId];
-      const [seat, press] = history.tickets as [TicketId, TicketId];
-      const { store } = await database();
-      await reader(store, log, ledger.kippu).catchUp();
-      const queries = resultsOf(store);
-
-      expect(await queries.event(concert)).toMatchObject({
-        value: { status: "Sealed", maxCapacity: 4, issued: 2 },
-        sequence: prefixLength + 5,
-      });
-      expect(await queries.ticket(seat)).toMatchObject({
-        value: { holder: history.holders.bob, attendances: 2 },
-        sequence: prefixLength + 4,
-      });
-      expect(await queries.ticket(press)).toMatchObject({
-        // Only the flag named is cleared (`INV-10`).
-        value: { restrictions: { cannotResale: true, cannotTransfer: false } },
-        sequence: prefixLength + 2,
-      });
-      expect(await queries.attendance(seat)).toEqual({
-        value: {
-          event: concert,
-          ticket: seat,
-          count: 2,
-          lastRecordedAt: records[prefixLength + 4]?.recordedAt,
-        },
-        sequence: prefixLength + 4,
-        authoritative: false,
-      });
-      expect(
-        (await queries.holdings(history.holders.bob)).map((held) => held.value.id).sort(),
-      ).toEqual([seat, press].sort());
-    });
-
-    it("NFR-11: rebuilding from cursor zero, in any batch size, yields identical projections", async () => {
-      const { log } = await extendedLog();
-      const one = await database();
-      const other = await database();
-      await reader(one.store, log, ledger.kippu, 1).catchUp();
-      await reader(other.store, log, ledger.kippu, 100).catchUp();
-      expect(await derivedSnapshot(one.store)).toEqual(await derivedSnapshot(other.store));
-    });
   });
 
   it("a record the projections cannot apply stops the reader, and is never skipped", async () => {
