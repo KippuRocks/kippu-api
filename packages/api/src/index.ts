@@ -48,6 +48,13 @@ export type {
   OperatorRefusal,
   RevokedSessions,
 } from "../../../src/operators/ports.js";
+/** Kippu operations reviewers (`T-021-16`): enrolment and sign-in, for Ibento's review queue. */
+export type {
+  Reviewer,
+  ReviewerEnrolmentChallenge,
+  ReviewerSession,
+  ReviewerSignInChallenge,
+} from "../../../src/reviewers/ports.js";
 /** Checkout (`F-022`): what Ichiba and Saifu exchange over a checkout, its Saifu handoff and its hold. */
 export type {
   BeginCheckoutInput,

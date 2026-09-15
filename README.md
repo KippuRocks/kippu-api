@@ -137,6 +137,10 @@ Object storage tests create a bucket of their own per file on `KIPPU_TEST_S3_END
   - Each step is an explicit WebAuthn exchange in `auth.organiser`: `begin*` returns a challenge, and `complete*` takes the credential and returns a session.
   - Passkeys are bound to `KIPPU_LOGIN_RP_ID` and must be user-verified.
   - The server refuses to start when `KIPPU_LOGIN_RP_ID` equals `KIPPU_HOLDER_RP_ID`, the holder credential's RP id. A login passkey therefore never shares a picker with a holder credential, and can never authorise a ledger operation.
+- **Reviewers** (`T-021-16`) are Kippu operations accounts of their own kind, never organisers, who decide capacity proofs (`REQ-EV-6`).
+  - Created, re-issued a code, and disabled **only from the command line**, by someone with deployment access: `pnpm reviewer:create --email <email>`, `pnpm reviewer:reissue-code --email <email>`, `pnpm reviewer:disable --email <email>` (after `pnpm build`, with the server's environment). No procedure creates or disables one.
+  - Creating one prints a one-time enrolment code, valid 72 hours and stored hashed; reissuing voids the previous one. The reviewer redeems it with `reviewers.enrolment.begin` / `.complete`: the email they were created with and a passkey on `KIPPU_LOGIN_RP_ID`, as an organiser signs up. They sign in later with `reviewers.signIn.begin` / `.complete`.
+  - Reviewer sessions last 12 hours. `reviewerProcedure` (`src/trpc/trpc.ts`) admits only a reviewer, so no organiser session reaches the review queue. Disabling a reviewer ends their sessions at once, voids their codes, and refuses their sign-in.
 - **Operators** redeem a one-time enrolment code for a session with `auth.operator.redeemEnrolmentCode`. Their organiser issues the code (`F-024`). The ledger never learns who an operator is (`REQ-OP-1`).
 - **Sessions** are opaque random bearer tokens.
   - Only a SHA-256 of each token is stored.

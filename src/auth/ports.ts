@@ -2,6 +2,7 @@ import type { Reads } from "../derived/ports.js";
 import type { Events } from "../events/ports.js";
 import type { Metadata } from "../metadata/ports.js";
 import type { Operators } from "../operators/ports.js";
+import type { ReviewerAuth } from "../reviewers/ports.js";
 import type { Sales } from "../sales/ports.js";
 import type {
   AuthenticationResponseJSON,
@@ -19,7 +20,11 @@ import type {
 export type Principal = AnonymousPrincipal | SessionPrincipal;
 
 /** A principal that signed in, and so holds a session. */
-export type SessionPrincipal = OrganiserPrincipal | OperatorPrincipal | HolderPrincipal;
+export type SessionPrincipal =
+  | OrganiserPrincipal
+  | OperatorPrincipal
+  | HolderPrincipal
+  | ReviewerPrincipal;
 
 /**
  * Whoever calls with no session: a visitor browsing with no account, no keys
@@ -45,6 +50,17 @@ export interface OperatorPrincipal {
   readonly kind: "operator";
   readonly operatorId: string;
   readonly organiserId: string;
+  readonly sessionId: string;
+}
+
+/**
+ * A Kippu operations reviewer (`T-021-16`; `F-021` plan §5.4): an account of its
+ * own kind, never an organiser, created only from the command line. Reviewers
+ * decide capacity proofs (`REQ-EV-6`), and reach nothing an organiser does.
+ */
+export interface ReviewerPrincipal {
+  readonly kind: "reviewer";
+  readonly reviewerId: string;
   readonly sessionId: string;
 }
 
@@ -236,4 +252,5 @@ export interface Services {
   readonly derived: Reads;
   readonly sales: Sales;
   readonly operators: Operators;
+  readonly reviewers: ReviewerAuth;
 }

@@ -3,6 +3,7 @@ import { derivedRouter } from "../derived/router.js";
 import { eventsRouter } from "../events/router.js";
 import { metadataRouter } from "../metadata/router.js";
 import { operatorsRouter } from "../operators/router.js";
+import { reviewersRouter } from "../reviewers/router.js";
 import { salesRouter } from "../sales/router.js";
 import { publicProcedure, router } from "./trpc.js";
 
@@ -25,6 +26,7 @@ export const appRouter = router({
   derived: derivedRouter,
   sales: salesRouter,
   operators: operatorsRouter,
+  reviewers: reviewersRouter,
 });
 
 export type AppRouter = typeof appRouter;

@@ -37,7 +37,8 @@ const email = z.string().min(3).max(320);
 const extensions = z.record(z.string(), z.unknown());
 const attachment = z.enum(["cross-platform", "platform"]).optional();
 
-const registrationResponse = z.object({
+/** A WebAuthn registration response, as browser helpers produce it. */
+export const registrationResponse = z.object({
   id: base64url,
   rawId: base64url,
   type: z.literal("public-key"),
@@ -53,7 +54,8 @@ const registrationResponse = z.object({
   clientExtensionResults: extensions,
 });
 
-const authenticationResponse = z.object({
+/** A WebAuthn authentication response, as browser helpers produce it. */
+export const authenticationResponse = z.object({
   id: base64url,
   rawId: base64url,
   type: z.literal("public-key"),

@@ -3,6 +3,7 @@ import type {
   HolderPrincipal,
   OperatorPrincipal,
   OrganiserPrincipal,
+  ReviewerPrincipal,
   RevokedOperatorSession,
   SessionInfo,
 } from "../auth/ports.js";
@@ -110,6 +111,18 @@ export const holderProcedure = authenticatedProcedure.use(({ ctx, next }) => {
     throw new TRPCError({ code: "FORBIDDEN", message: "only a holder may do this" });
   }
   return next({ ctx: { ...ctx, principal: principal as HolderPrincipal } });
+});
+
+/**
+ * A procedure only a Kippu operations reviewer may call (`T-021-16`): never an
+ * organiser, so no organiser session reaches the capacity-proof review queue.
+ */
+export const reviewerProcedure = authenticatedProcedure.use(({ ctx, next }) => {
+  const { principal } = ctx.session;
+  if (principal.kind !== "reviewer") {
+    throw new TRPCError({ code: "FORBIDDEN", message: "only a Kippu reviewer may do this" });
+  }
+  return next({ ctx: { ...ctx, principal: principal as ReviewerPrincipal } });
 });
 
 /**
