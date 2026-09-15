@@ -21,6 +21,7 @@ const PUBLIC_PROCEDURES = [
   "derived.events.get",
   "sales.checkout.begin",
   "sales.checkout.get",
+  "sales.checkout.hold",
   "system.health",
 ];
 

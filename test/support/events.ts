@@ -115,6 +115,7 @@ export async function eventsHarness(options: EventsHarnessOptions = {}): Promise
     ledger,
     classes: events.classes,
     zones: events.zones,
+    seats: events.seats,
   });
 
   const sessions = new Map<string, SessionInfo>();

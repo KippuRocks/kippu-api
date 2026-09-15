@@ -1,5 +1,5 @@
 /**
- * Primary sales: checkout sessions (`F-022`; `US-B4`).
+ * Primary sales: checkout sessions and holds (`F-022`; `US-B4`).
  *
  * This module is imported by the tRPC context, whose type is published in
  * `@kippu/api`: it may import only modules that import nothing at runtime, and
@@ -53,6 +53,21 @@ export type CheckoutAccount =
   /** No holder account yet: hand off to Saifu, and wait for the link. */
   | { readonly state: "handoff"; readonly handoff: SaifuHandoff };
 
+/**
+ * Where a checkout's hold stands (`REQ-HD-1`). `outstanding` counts against
+ * capacity, class quota and seat; `lapsed` and `released` no longer do.
+ */
+export type HoldStatus = "outstanding" | "lapsed" | "released";
+
+/** A checkout's hold on the issuance of its ticket: a Kippu fact, with no holder (`REQ-HD-2`). */
+export interface CheckoutHold {
+  readonly status: HoldStatus;
+  /** ISO 8601. When an outstanding hold lapses, unless it is confirmed first. */
+  readonly expiresAt: string;
+  /** Whether the lifetime was extended, once, when payment started (`F-022` plan §5.2). */
+  readonly extended: boolean;
+}
+
 /** A checkout session. */
 export interface Checkout {
   readonly event: string;
@@ -60,9 +75,25 @@ export interface Checkout {
   readonly class: string;
   readonly placement: PlacementInput;
   readonly account: CheckoutAccount;
+  /** The checkout's hold, once placed; `null` before. */
+  readonly hold: CheckoutHold | null;
   /** ISO 8601. */
   readonly createdAt: string;
 }
+
+/**
+ * Why a hold was refused — before any payment step (`AC-B4.4`):
+ * - `sold-out`: outstanding holds and issued tickets fill the event's capacity (`INV-4`);
+ * - `class-sold-out`: they fill the class's quota (`REQ-TC-5`);
+ * - `seat-taken`: the seat is issued, being issued, or held by another checkout
+ *   (`REQ-HD-3`, `AC-B5.2`).
+ */
+export type HoldRefusal = "sold-out" | "class-sold-out" | "seat-taken";
+
+/** The outcome of placing a checkout's hold. A refusal is an answer, not an error. */
+export type HoldOutcome =
+  | { readonly outcome: "held"; readonly checkout: Checkout }
+  | { readonly outcome: "refused"; readonly reason: HoldRefusal };
 
 /** A checkout just begun, with the token that names it. The token is shown exactly once. */
 export interface BegunCheckout {
@@ -74,7 +105,11 @@ export type CheckoutFailure =
   /** No checkout has this token. */
   | "unknown-checkout"
   /** The checkout is already linked to another holder account. */
-  | "linked-to-another-account";
+  | "linked-to-another-account"
+  /** The checkout has no holder account yet: hand off to Saifu first (`AC-B4.1`). */
+  | "account-required"
+  /** The checkout's hold lapsed or was released: begin a new checkout. */
+  | "hold-ended";
 
 export class CheckoutError extends Error {
   readonly failure: CheckoutFailure;
@@ -107,4 +142,13 @@ export interface Sales {
    * holder principal links.
    */
   linkCheckout(request: SalesRequest, token: string): Promise<Checkout>;
+  /**
+   * Places the checkout's hold (`REQ-HD-1`, `REQ-HD-3`): in one transaction, it is
+   * counted against the event's capacity, the class's quota and, in a seated zone,
+   * the seat. Refused — before any payment — when any is exhausted (`AC-B4.4`).
+   * The checkout must have a holder account. Asking again while the hold is
+   * outstanding answers with the same hold; once it has lapsed or been released,
+   * the checkout is over.
+   */
+  hold(request: SalesRequest, token: string): Promise<HoldOutcome>;
 }

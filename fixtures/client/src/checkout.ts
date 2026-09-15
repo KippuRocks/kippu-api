@@ -1,4 +1,10 @@
-import type { AppRouter, BeginCheckoutInput, Checkout, SaifuHandoff } from "@kippu/api";
+import type {
+  AppRouter,
+  BeginCheckoutInput,
+  Checkout,
+  HoldRefusal,
+  SaifuHandoff,
+} from "@kippu/api";
 import { createTRPCClient, httpBatchLink } from "@trpc/client";
 
 const url = "http://127.0.0.1:8080/v0/trpc";
@@ -19,4 +25,11 @@ export async function linkCheckout(holderToken: string, handoff: SaifuHandoff): 
     links: [httpBatchLink({ url, headers: { authorization: `Bearer ${holderToken}` } })],
   });
   return saifu.sales.checkout.link.mutate({ token: handoff.token });
+}
+
+/** How Ichiba places the hold (`T-022-03`): a refusal is shown before any payment step. */
+export async function holdCheckout(token: string): Promise<HoldRefusal | Checkout> {
+  const ichiba = createTRPCClient<AppRouter>({ links: [httpBatchLink({ url })] });
+  const result = await ichiba.sales.checkout.hold.mutate({ token });
+  return result.outcome === "held" ? result.checkout : result.reason;
 }
