@@ -110,6 +110,15 @@ export interface EventsRead {
   readonly freshness: ReadFreshness;
 }
 
+/** One page of the public index of events on sale (`T-025-10`). */
+export interface EventsOnSalePage {
+  /** Events on sale, most recently created first. */
+  readonly events: readonly EventView[];
+  /** Pass as `page` to read the next page; `null` on the last. Opaque. */
+  readonly nextPage: string | null;
+  readonly freshness: ReadFreshness;
+}
+
 export interface HoldingsRead {
   readonly holdings: readonly HoldingView[];
   readonly freshness: ReadFreshness;
@@ -125,6 +134,13 @@ export interface WaitedFor {
 export interface Reads {
   /** An event, by id. Public: browsing needs no account (`REQ-MP-7`). */
   event(event: string): Promise<EventRead>;
+  /**
+   * The public index of events on sale: `Active` events with a `Purchased` class,
+   * most recently created first, `limit` at a time, continuing after `page`.
+   * Public: browsing needs no account (`REQ-MP-7`). A malformed `page` is refused
+   * with `RefusedRequest`.
+   */
+  eventsOnSale(limit: number, page: string | null): Promise<EventsOnSalePage>;
   /** The events the organiser's ledger account owns, most recently created first. */
   organiserEvents(organiserId: string): Promise<EventsRead>;
   /** The tickets a holder's account holds, by event (`US-D1`, `US-E1`). */

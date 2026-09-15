@@ -1,5 +1,6 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
+import { RefusedRequest } from "../authority/errors.js";
 import {
   authenticatedProcedure,
   holderProcedure,
@@ -7,7 +8,7 @@ import {
   publicProcedure,
   router,
 } from "../trpc/trpc.js";
-import type { EventRead, EventsRead, HoldingsRead, WaitedFor } from "./ports.js";
+import type { EventRead, EventsOnSalePage, EventsRead, HoldingsRead, WaitedFor } from "./ports.js";
 
 /**
  * Validates with a schema, and types the input as `T` — a type declared without
@@ -26,6 +27,17 @@ function parser<T>(schema: z.ZodType): (value: unknown) => T {
 const id32 = z.string().regex(/^[0-9a-f]{64}$/, "expected 64 lower-case hex characters");
 
 const eventInput = z.object({ event: id32 }).strict();
+
+/** How many events a page of the index holds, unless a client asks for fewer or more. */
+export const DEFAULT_PAGE_SIZE = 20;
+
+const eventsOnSaleInput = z
+  .object({
+    limit: z.number().int().min(1).max(100).optional(),
+    page: z.string().max(200).nullable().optional(),
+  })
+  .strict()
+  .optional();
 
 const waitForInput = z
   .object({ cursor: z.string().max(1024), timeout: z.number().int().min(0).max(10_000) })
@@ -46,6 +58,27 @@ export const derivedRouter = router({
     get: publicProcedure
       .input(parser<{ event: string }>(eventInput))
       .query(({ ctx, input }): Promise<EventRead> => ctx.services.derived.event(input.event)),
+    /**
+     * Ichiba's index: the events on sale — `Active`, with a `Purchased` class —
+     * each as `get` returns it, most recently created first, `limit` (default 20,
+     * at most 100) to a page. Public (`REQ-MP-7`). Cancelled, finished and
+     * sealed events are not listed. Pass `nextPage` back as `page` to continue.
+     */
+    onSale: publicProcedure
+      .input(parser<{ limit?: number; page?: string | null } | undefined>(eventsOnSaleInput))
+      .query(async ({ ctx, input }): Promise<EventsOnSalePage> => {
+        try {
+          return await ctx.services.derived.eventsOnSale(
+            input?.limit ?? DEFAULT_PAGE_SIZE,
+            input?.page ?? null,
+          );
+        } catch (error) {
+          if (error instanceof RefusedRequest) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: error.message });
+          }
+          throw error;
+        }
+      }),
     /** Ibento: the events the organiser owns on the ledger, most recently created first. */
     mine: organiserProcedure.query(
       ({ ctx }): Promise<EventsRead> =>

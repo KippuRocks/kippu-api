@@ -19,6 +19,7 @@ const PUBLIC_PROCEDURES = [
   "auth.organiser.completeSignIn",
   "auth.organiser.completeSignUp",
   "derived.events.get",
+  "derived.events.onSale",
   "sales.checkout.begin",
   "sales.checkout.get",
   "sales.checkout.hold",
