@@ -60,6 +60,23 @@ export interface HolderPrincipal {
   readonly sessionId: string;
 }
 
+/**
+ * Kippu acting on its own, with no user and no session behind the request: a
+ * write an organiser arranged beforehand, such as a scheduled `Finished`
+ * (`T-021-09`, `REQ-EV-12`). It never signs in and reaches no procedure. The
+ * audit log attributes its writes to the organiser who arranged them (`NFR-7`).
+ */
+export interface SystemPrincipal {
+  readonly kind: "system";
+  /** The organiser who arranged the write. */
+  readonly organiserId: string;
+  /** What Kippu is doing on its own. */
+  readonly task: "scheduled-finish";
+}
+
+/** Whoever a relayed write, or a checkout step, is attributed to: a principal, or Kippu itself. */
+export type ActingPrincipal = Principal | SystemPrincipal;
+
 /** A bearer token and when it stops working. The token is shown exactly once. */
 export interface IssuedSession {
   readonly token: string;

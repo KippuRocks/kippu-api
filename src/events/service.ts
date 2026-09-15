@@ -5,12 +5,14 @@ import type { OrganiserSaleActions } from "../sales/organiser-actions.js";
 import type { Store } from "../store/store.js";
 import { type Capacity, createCapacity } from "./capacity.js";
 import { createEventWith } from "./create-event.js";
+import { createFinishSchedules, type FinishSchedules } from "./finish-schedule.js";
 import { createInvitations, type Invitations } from "./invitations.js";
 import { issueGrantedWith } from "./issuance.js";
 import { createPassWindows, type PassWindows } from "./pass-window.js";
 import type { Events } from "./ports.js";
 import { createSaleAssets, type SaleAssets } from "./sale-assets.js";
 import { createSeatAllocation, type SeatAllocation } from "./seats.js";
+import { createStatusTransitions, type StatusTransitions } from "./status.js";
 import { createZones, type Zones } from "./zones.js";
 
 export interface EventsOptions {
@@ -30,6 +32,8 @@ export interface EventsOptions {
   readonly metadataPublicUrl?: string;
   readonly now?: () => Date;
   readonly randomBytes?: (length: number) => Uint8Array;
+  /** Receives failures no caller awaits: the finish scheduler's. */
+  readonly onError?: (error: unknown) => void;
 }
 
 /** The `F-021` services behind the events router. */
@@ -42,6 +46,8 @@ export function createEvents(options: EventsOptions): Events & {
   readonly saleAssets: SaleAssets;
   readonly passWindows: PassWindows;
   readonly capacity: Capacity;
+  readonly status: StatusTransitions;
+  readonly finishSchedules: FinishSchedules;
 } {
   const classes = createClasses(options);
   const zones = createZones(options);
@@ -49,6 +55,8 @@ export function createEvents(options: EventsOptions): Events & {
   const saleAssets = createSaleAssets(options);
   const passWindows = createPassWindows(options);
   const capacity = createCapacity(options);
+  const status = createStatusTransitions(options);
+  const finishSchedules = createFinishSchedules({ ...options, status });
   const issueGranted = issueGrantedWith({ ...options, classes, zones, seats });
   const invitations = createInvitations({ ...options, classes, zones, issueGranted });
   return {
@@ -59,6 +67,16 @@ export function createEvents(options: EventsOptions): Events & {
     saleAssets,
     passWindows,
     capacity,
+    status,
+    finishSchedules,
+    seal: (organiserId, request, input) => status.seal(organiserId, request, input.event),
+    cancel: (organiserId, request, input) => status.cancel(organiserId, request, input.event),
+    finish: (organiserId, request, input) => status.finish(organiserId, request, input.event),
+    scheduleFinish: (organiserId, request, input) =>
+      finishSchedules.schedule(organiserId, request, input),
+    cancelScheduledFinish: (organiserId, request, input) =>
+      finishSchedules.cancel(organiserId, request, input),
+    finishSchedule: (organiserId, input) => finishSchedules.get(organiserId, input),
     decreaseCapacity: (organiserId, request, input) =>
       capacity.decrease(organiserId, request, input),
     passWindow: (organiserId, input) => passWindows.get(organiserId, input),

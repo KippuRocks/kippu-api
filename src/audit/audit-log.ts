@@ -1,11 +1,12 @@
 import type { CommandKind, Cursor, OperationId, TickettoErrorCode } from "@ticketto/sdk";
-import type { Principal } from "../auth/ports.js";
+import type { ActingPrincipal } from "../auth/ports.js";
 import type { Store } from "../store/store.js";
 
 /** What caused a relayed write: the request, and who made it. */
 export interface RelayRequest {
   readonly requestId: string;
-  readonly principal: Principal;
+  /** A session's principal, or Kippu itself acting for the organiser who arranged the write. */
+  readonly principal: ActingPrincipal;
 }
 
 /** Written before a relayed write is signed (`NFR-7`, `F-020` plan §5.3). */
@@ -47,7 +48,7 @@ export class AuditError extends Error {
 
 interface Row {
   request_id: string;
-  principal_kind: Principal["kind"];
+  principal_kind: ActingPrincipal["kind"];
   organiser_id: string | null;
   operator_id: string | null;
   session_id: string | null;
@@ -63,7 +64,7 @@ interface Row {
 
 type PrincipalColumns = [string, string | null, string | null, string | null, string | null];
 
-function principalColumns(principal: Principal): PrincipalColumns {
+function principalColumns(principal: ActingPrincipal): PrincipalColumns {
   switch (principal.kind) {
     case "anonymous":
       return ["anonymous", null, null, null, null];
@@ -73,10 +74,14 @@ function principalColumns(principal: Principal): PrincipalColumns {
       return ["operator", principal.organiserId, principal.operatorId, principal.sessionId, null];
     case "holder":
       return ["holder", null, null, principal.sessionId, principal.account];
+    case "system":
+      // No session: attributed to the organiser who arranged the write; the request id
+      // names the task (`scheduled-finish:<schedule id>`).
+      return ["system", principal.organiserId, null, null, null];
   }
 }
 
-function principalOf(row: Row): Principal {
+function principalOf(row: Row): ActingPrincipal {
   switch (row.principal_kind) {
     case "organiser":
       return {
@@ -96,6 +101,12 @@ function principalOf(row: Row): Principal {
         kind: "holder",
         account: row.holder_account as string,
         sessionId: row.session_id as string,
+      };
+    case "system":
+      return {
+        kind: "system",
+        organiserId: row.organiser_id as string,
+        task: row.request_id.split(":")[0] as "scheduled-finish",
       };
     default:
       return { kind: "anonymous" };

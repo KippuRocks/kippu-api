@@ -18,6 +18,7 @@ import type {
   EventPassWindow,
   EventSaleAsset,
   EventsRequest,
+  FinishSchedule,
   Invitation,
   InvitationRefusal,
   IssuedTicket,
@@ -26,10 +27,12 @@ import type {
   Recorded,
   RedeemedInvitation,
   RedeemInvitationInput,
+  ScheduleFinishInput,
   SeatPositions,
   SetClassPriceInput,
   SetPassWindowInput,
   SetSaleAssetInput,
+  StatusChanged,
   TicketClass,
   ZoneInput,
 } from "./ports.js";
@@ -155,6 +158,10 @@ const defineClassInput = z
 const setSaleAssetInput = z.object({ event: id32, asset: saleAsset }).strict();
 
 const decreaseCapacityInput = z.object({ event: id32, capacity: count }).strict();
+
+const scheduleFinishInput = z
+  .object({ event: id32, at: z.number().int().positive().max(Number.MAX_SAFE_INTEGER) })
+  .strict();
 
 // Milliseconds; the bounds are checked by the service, whose maximum is the ledger's.
 const setPassWindowInput = z
@@ -337,6 +344,72 @@ export const eventsRouter = router({
         mapped(() =>
           ctx.services.events.setSaleAsset(ctx.principal.organiserId, requestOf(ctx), input),
         ),
+    ),
+  /**
+   * Seals the event (`US-A4`): its sales close and every hold is released first
+   * (`REQ-HD-4`), then `Sealed` is submitted; issuance fails thereafter
+   * (`ERR-EventSealed`). A ledger refusal — `ERR-InvalidTransition` — reopens sales.
+   */
+  seal: organiserProcedure
+    .input(parser<EventInput>(eventInput))
+    .mutation(
+      ({ ctx, input }): Promise<StatusChanged> =>
+        mapped(() => ctx.services.events.seal(ctx.principal.organiserId, requestOf(ctx), input)),
+    ),
+  /**
+   * Cancels the event (`US-A5`): sales close and holds are released first, then
+   * `Cancelled` is submitted, then a refund entitlement is recorded per purchased
+   * ticket (`AC-A5.5`). Calling it again on a cancelled event records any refund
+   * entitlements still missing, with `cursor` `null`.
+   */
+  cancel: organiserProcedure
+    .input(parser<EventInput>(eventInput))
+    .mutation(
+      ({ ctx, input }): Promise<StatusChanged> =>
+        mapped(() => ctx.services.events.cancel(ctx.principal.organiserId, requestOf(ctx), input)),
+    ),
+  /**
+   * Finishes the event now (`REQ-EV-12`): nothing of it changes on the ledger
+   * afterwards (`INV-16`). An event still `Active` has its sales closed first.
+   */
+  finish: organiserProcedure
+    .input(parser<EventInput>(eventInput))
+    .mutation(
+      ({ ctx, input }): Promise<StatusChanged> =>
+        mapped(() => ctx.services.events.finish(ctx.principal.organiserId, requestOf(ctx), input)),
+    ),
+  /**
+   * Schedules the event's `Finished` at a future time, replacing any schedule that
+   * has not run. Kippu notices the organiser 24 hours before (`noticedAt`), then
+   * finishes the event itself (`REQ-EV-12`). Off unless set.
+   */
+  scheduleFinish: organiserProcedure
+    .input(parser<ScheduleFinishInput>(scheduleFinishInput))
+    .mutation(
+      ({ ctx, input }): Promise<FinishSchedule> =>
+        mapped(() =>
+          ctx.services.events.scheduleFinish(ctx.principal.organiserId, requestOf(ctx), input),
+        ),
+    ),
+  /** Cancels the event's scheduled `Finished`, until it runs (`CONFLICT` after). */
+  cancelScheduledFinish: organiserProcedure
+    .input(parser<EventInput>(eventInput))
+    .mutation(
+      ({ ctx, input }): Promise<FinishSchedule> =>
+        mapped(() =>
+          ctx.services.events.cancelScheduledFinish(
+            ctx.principal.organiserId,
+            requestOf(ctx),
+            input,
+          ),
+        ),
+    ),
+  /** The event's scheduled `Finished`, with its notice; `null` when none was set. */
+  finishSchedule: organiserProcedure
+    .input(parser<EventInput>(eventInput))
+    .query(
+      ({ ctx, input }): Promise<FinishSchedule | null> =>
+        mapped(() => ctx.services.events.finishSchedule(ctx.principal.organiserId, input)),
     ),
   /**
    * Decreases the event's capacity (`US-A6`): down to the tickets issued plus
