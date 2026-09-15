@@ -1,4 +1,4 @@
-import { classLocator, METADATA_ORIGIN } from "@kippu/metadata-schema";
+import { classLocator, METADATA_ORIGIN } from "@kippurocks/metadata-schema";
 import type { AccountId, Cursor, EventId, Ticket } from "@ticketto/sdk";
 import type { OrganiserAuthority } from "../authority/authority.js";
 import { RefusedRequest } from "../authority/errors.js";

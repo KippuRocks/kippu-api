@@ -4,7 +4,7 @@ import {
   type JsonSchema,
   lintPersonalData,
   type PersonalDataViolation,
-} from "@kippu/metadata-schema";
+} from "@kippurocks/metadata-schema";
 
 /** The schema an event document must declare, typed from the packed package. */
 export const declaredSchema: string = EVENT_SCHEMA_ID;

@@ -4,7 +4,7 @@ import type { Principal, RevokedOperatorSession, Services, SessionInfo } from ".
  * What every procedure receives about the request that caused it.
  *
  * Deliberately free of Fastify types, and of any runtime import: the router
- * type is published in `@kippu/api`, and a client compiling against it must not
+ * type is published in `@kippurocks/api`, and a client compiling against it must not
  * need the server's HTTP framework, driver or WebAuthn library. Everything
  * named here is declared in modules that import nothing but each other.
  */

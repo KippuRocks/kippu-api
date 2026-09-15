@@ -2,8 +2,8 @@
  * `pnpm sponsor:start` — the sponsor relay, as its own process (`F-023` plan
  * §5.1). It neither starts nor needs kippu-api's server.
  */
-import { kmsP256Signer } from "@kippu/sponsorship";
-import { softwareKmsP256Key } from "@kippu/sponsorship/testing";
+import { kmsP256Signer } from "@kippurocks/sponsorship";
+import { softwareKmsP256Key } from "@kippurocks/sponsorship/testing";
 import { createProfileV0 } from "@ticketto/profile-v0";
 import { loadSponsorRelayConfig } from "./config.js";
 import { connectRelayDerivedCopy } from "./derived.js";

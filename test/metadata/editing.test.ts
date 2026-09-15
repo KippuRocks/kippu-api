@@ -4,7 +4,7 @@ import {
   classLocator,
   EVENT_SCHEMA_ID,
   eventLocator,
-} from "@kippu/metadata-schema";
+} from "@kippurocks/metadata-schema";
 import { type Cursor, LOG_START, type LogRecord } from "@ticketto/sdk";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { buildMetadataEdge } from "../../src/metadata/edge.js";

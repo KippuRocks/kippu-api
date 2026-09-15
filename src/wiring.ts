@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { createRelaySponsor } from "@kippu/sponsorship";
+import { createRelaySponsor } from "@kippurocks/sponsorship";
 import { connectOffchainBackend } from "@ticketto/binding-offchain";
 import type { Backend } from "@ticketto/sdk";
 import type { FastifyInstance, FastifyServerOptions } from "fastify";

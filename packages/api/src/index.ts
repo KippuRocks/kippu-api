@@ -1,5 +1,5 @@
 /**
- * `@kippu/api` — the `C5` contract.
+ * `@kippurocks/api` — the `C5` contract.
  *
  * Exports only types. Clients depend on this package by version and compile
  * their tRPC client against `AppRouter`; nothing of the server's

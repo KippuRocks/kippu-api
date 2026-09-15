@@ -186,7 +186,7 @@ jobs:
           exit 1
 
   contract:
-    name: Contracts — a client installs the packed @kippu/api and @kippu/metadata-schema
+    name: Contracts — a client installs the packed @kippurocks/api and @kippurocks/metadata-schema
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7

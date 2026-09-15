@@ -3,7 +3,7 @@ import {
   eventLocator,
   METADATA_ORIGIN,
   SCHEMA_BASE_URL,
-} from "@kippu/metadata-schema";
+} from "@kippurocks/metadata-schema";
 import type { EventId } from "@ticketto/sdk";
 import type { OrganiserAuthority } from "../authority/authority.js";
 import { RefusedRequest, SpecCodeError } from "../authority/errors.js";

@@ -1,4 +1,4 @@
-# @kippu/metadata-schema
+# @kippurocks/metadata-schema
 
 JSON Schemas (2020-12) for Kippu's public metadata documents — contract `C6`.
 
@@ -14,8 +14,8 @@ served side by side. Schemas are closed: a field a schema does not declare is
 refused.
 
 ```ts
-import { EVENT_SCHEMA_ID, eventSchema, classSchema } from "@kippu/metadata-schema";
-import eventSchemaFile from "@kippu/metadata-schema/event/1.0.json" with { type: "json" };
+import { EVENT_SCHEMA_ID, eventSchema, classSchema } from "@kippurocks/metadata-schema";
+import eventSchemaFile from "@kippurocks/metadata-schema/event/1.0.json" with { type: "json" };
 ```
 
 ## No personal data

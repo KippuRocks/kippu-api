@@ -16,7 +16,7 @@ import type {
  * Who a request acts as (`F-020` plan §5.1).
  *
  * This module is imported by the tRPC context, whose type is published in
- * `@kippu/api`: it may import only modules that import nothing at runtime.
+ * `@kippurocks/api`: it may import only modules that import nothing at runtime.
  */
 export type Principal = AnonymousPrincipal | SessionPrincipal;
 

@@ -125,7 +125,7 @@ describeWithObjectStorage("metadata served from object storage", () => {
     const require = createRequire(import.meta.url);
     for (const { id } of published) {
       const subpath = id.replace("https://meta.kippu.rocks/v0/schemas/", "");
-      const file = await readFile(require.resolve(`@kippu/metadata-schema/${subpath}`));
+      const file = await readFile(require.resolve(`@kippurocks/metadata-schema/${subpath}`));
 
       const response = await crossOriginFetch(served(id));
       expect(response.status).toBe(200);

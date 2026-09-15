@@ -7,7 +7,7 @@ import type {
   OperatorAccount,
   OperatorGrant,
   OperatorRefusal,
-} from "@kippu/api";
+} from "@kippurocks/api";
 import { createTRPCClient, httpBatchLink, TRPCClientError } from "@trpc/client";
 
 function signedIn(token: string) {

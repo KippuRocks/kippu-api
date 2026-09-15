@@ -1,4 +1,4 @@
-// @kippu/sponsorship — sponsorships bound to an operation id or pass id, their
+// @kippurocks/sponsorship — sponsorships bound to an operation id or pass id, their
 // verification, and the sponsor's p256 KMS signer (F-023, T-023-01; REQ-SP-1,
 // REQ-SP-1b). Design: features/023-sponsorship/plan.md in KippuRocks/kippu-docs.
 //

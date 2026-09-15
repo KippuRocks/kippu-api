@@ -1,5 +1,5 @@
 {
-  "name": "@kippu/sponsorship",
+  "name": "@kippurocks/sponsorship",
   "version": "0.0.0",
   "description": "Kippu's sponsorship codec, verification, and the sponsor's p256 KMS signer (F-023)",
   "license": "UNLICENSED",

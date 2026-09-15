@@ -1,7 +1,7 @@
 import { readdir, readFile } from "node:fs/promises";
 import type { AddressInfo } from "node:net";
-import { kmsP256Signer, verifySponsorship } from "@kippu/sponsorship";
-import { softwareKmsP256Key } from "@kippu/sponsorship/testing";
+import { kmsP256Signer, verifySponsorship } from "@kippurocks/sponsorship";
+import { softwareKmsP256Key } from "@kippurocks/sponsorship/testing";
 import { createProfileV0 } from "@ticketto/profile-v0";
 import { softwareP256Signer } from "@ticketto/profile-v0/testing";
 import type { Command, EventId, OperationId, SignedCommand, Timestamp } from "@ticketto/sdk";

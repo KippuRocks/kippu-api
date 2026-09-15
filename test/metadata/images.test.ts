@@ -199,7 +199,7 @@ describeWithStore("image upload for event documents", () => {
       const other = await harness.organiser();
       const event = await eventOf(owner);
       const cases = [
-        // Types a client compiled against @kippu/api cannot name, sent anyway.
+        // Types a client compiled against @kippurocks/api cannot name, sent anyway.
         { mediaType: "image/svg+xml" as ImageMediaType, data: SVG.toString("base64") },
         {
           mediaType: "image/gif" as ImageMediaType,

@@ -4,7 +4,7 @@
  * (`REQ-OP-1`).
  *
  * This module is imported by the tRPC context, whose type is published in
- * `@kippu/api`: it may import nothing at runtime, and names no SDK type.
+ * `@kippurocks/api`: it may import nothing at runtime, and names no SDK type.
  */
 
 import type { OperatorPrincipal, Principal } from "../auth/ports.js";

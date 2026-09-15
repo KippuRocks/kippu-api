@@ -6,7 +6,7 @@ import type {
   HoldRefusal,
   SaifuHandoff,
   SaleInventory,
-} from "@kippu/api";
+} from "@kippurocks/api";
 import { createTRPCClient, httpBatchLink } from "@trpc/client";
 
 const url = "http://127.0.0.1:8080/v0/trpc";

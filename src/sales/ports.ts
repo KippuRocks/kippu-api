@@ -2,7 +2,7 @@
  * Primary sales: checkout sessions and holds (`F-022`; `US-B4`).
  *
  * This module is imported by the tRPC context, whose type is published in
- * `@kippu/api`: it may import only modules that import nothing at runtime, and
+ * `@kippurocks/api`: it may import only modules that import nothing at runtime, and
  * names no SDK type. Identifiers cross it as lower-case hex strings.
  */
 

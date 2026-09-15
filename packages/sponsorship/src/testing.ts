@@ -1,4 +1,4 @@
-// @kippu/sponsorship/testing — a software stand-in for the sponsor's KMS key, for
+// @kippurocks/sponsorship/testing — a software stand-in for the sponsor's KMS key, for
 // local development and tests only. Its secret key is plain bytes in memory:
 // never use it for a deployed sponsor.
 

@@ -1,5 +1,5 @@
 ---
-"@kippu/api": minor
+"@kippurocks/api": minor
 ---
 
 Organiser and operator authentication, and sessions (`T-020-05`):

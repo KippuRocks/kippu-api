@@ -1,10 +1,10 @@
-# @kippu/api
+# @kippurocks/api
 
 The Kippu API's tRPC router type — contract `C5`. Types only: no server
 implementation ships in this package.
 
 ```ts
-import type { AppRouter } from "@kippu/api";
+import type { AppRouter } from "@kippurocks/api";
 import { createTRPCClient, httpBatchLink } from "@trpc/client";
 
 const kippu = createTRPCClient<AppRouter>({

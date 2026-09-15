@@ -1,5 +1,5 @@
 ---
-"@kippu/api": minor
+"@kippurocks/api": minor
 ---
 
 Paid checkout (`T-022-04`). `sales.checkout.pay({ token, successUrl, cancelUrl })` creates the payment provider's single-use hosted checkout for an outstanding hold — at the price and asset the hold recorded, expiring with the hold, which takes its single 5-minute extension then — or answers with the open one; a cancelled or expired one is replaced while the hold lives. Ichiba redirects to its `url`. The provider's webhook (`POST /webhooks/payments`, outside `/v0`) is verified by signature and prompts a retrieval: a checkout retrieved `paid` for the hold's amount and asset issues the ticket through the organiser's authority — `Purchased`, the class's policy, no restrictions, no price — and confirms the hold. `sales.checkout.cancel({ token })` gives up: the hosted checkout is cancelled and the hold released. Paid but not issued — refused by the ledger, landing after the hold ended with the place gone, or another amount — records a refund entitlement. `Checkout` gains `payment`, `sale` and `refund`; `CheckoutHold` gains `asset` and `price`; `HoldStatus` gains `issuing` and `confirmed`. New exported types: `CheckoutPayment`, `CheckoutSale`, `CheckoutRefund`, `PayCheckoutInput`.

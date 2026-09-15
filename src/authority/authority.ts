@@ -1,4 +1,4 @@
-import { type KmsP256Key, kmsP256Signer } from "@kippu/sponsorship";
+import { type KmsP256Key, kmsP256Signer } from "@kippurocks/sponsorship";
 import {
   encodeRegistration,
   normaliseP256Signature,

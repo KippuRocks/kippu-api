@@ -2,7 +2,7 @@
  * Organisers' editing of public metadata documents (`F-026` plan §5.4, `US-A3`).
  *
  * This module is imported by the tRPC context, whose type is published in
- * `@kippu/api`: it may import nothing at runtime. Identifiers cross it as
+ * `@kippurocks/api`: it may import nothing at runtime. Identifiers cross it as
  * lower-case hex strings, and documents as plain JSON.
  */
 

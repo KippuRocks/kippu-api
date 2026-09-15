@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
-import { kmsP256Signer, type SponsoredInput, verifySponsorship } from "@kippu/sponsorship";
-import { softwareKmsP256Key } from "@kippu/sponsorship/testing";
+import { kmsP256Signer, type SponsoredInput, verifySponsorship } from "@kippurocks/sponsorship";
+import { softwareKmsP256Key } from "@kippurocks/sponsorship/testing";
 import {
   createProfileV0,
   decodeAuthorisation,

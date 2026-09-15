@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import type { KmsP256Key } from "@kippu/sponsorship";
-import { softwareKmsP256Key } from "@kippu/sponsorship/testing";
+import type { KmsP256Key } from "@kippurocks/sponsorship";
+import { softwareKmsP256Key } from "@kippurocks/sponsorship/testing";
 import type { LedgerEnvironment } from "../ledger/ticketto.js";
 
 /**
@@ -8,7 +8,7 @@ import type { LedgerEnvironment } from "../ledger/ticketto.js";
  * key per organiser, in a managed KMS or HSM, never in the application
  * database (`PLAN.md` §3.5).
  *
- * A key is reached through `@kippu/sponsorship`'s `KmsP256Key`, the same narrow
+ * A key is reached through `@kippurocks/sponsorship`'s `KmsP256Key`, the same narrow
  * surface the sponsor's key uses: the public key, and ECDSA P-256 over a digest.
  * The Kippu store keeps only a key's reference and its public key.
  */

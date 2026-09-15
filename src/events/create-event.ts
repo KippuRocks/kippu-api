@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { eventLocator, METADATA_ORIGIN } from "@kippu/metadata-schema";
+import { eventLocator, METADATA_ORIGIN } from "@kippurocks/metadata-schema";
 import { eventId as deriveEventId } from "@ticketto/profile-v0";
 import type { EventId, ZoneId } from "@ticketto/sdk";
 import type { OrganiserAuthority } from "../authority/authority.js";

@@ -1,5 +1,5 @@
 {
-  "name": "@kippu/api",
+  "name": "@kippurocks/api",
   "version": "0.0.0",
   "description": "Types of the Kippu API's tRPC router (C5), for clients to compile against",
   "license": "UNLICENSED",

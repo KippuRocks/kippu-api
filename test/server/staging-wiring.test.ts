@@ -1,7 +1,7 @@
 import { readdir, readFile } from "node:fs/promises";
 import type { AddressInfo } from "node:net";
-import { kmsP256Signer } from "@kippu/sponsorship";
-import { softwareKmsP256Key } from "@kippu/sponsorship/testing";
+import { kmsP256Signer } from "@kippurocks/sponsorship";
+import { softwareKmsP256Key } from "@kippurocks/sponsorship/testing";
 import { createProfileV0 } from "@ticketto/profile-v0";
 import { type EventId, LOG_START, type LogRecord } from "@ticketto/sdk";
 import { createTRPCClient, httpLink } from "@trpc/client";
