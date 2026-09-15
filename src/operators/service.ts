@@ -333,8 +333,8 @@ export function createOperators({
       throw refusedCheck(result.rows.length > 0 ? "grant-revoked" : "not-granted");
     },
 
-    reportAdmission(operator, request, input) {
-      return reports.record(operator, request, input);
+    reportAdmission(operator, request, input, sessionRevokedAt = null) {
+      return reports.record(operator, request, input, sessionRevokedAt);
     },
   };
 }

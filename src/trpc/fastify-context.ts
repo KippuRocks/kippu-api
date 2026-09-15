@@ -15,13 +15,25 @@ export function bearerToken(header: string | string[] | undefined): string | nul
 /**
  * Builds a procedure's context from the Fastify request that carries it. A
  * missing, malformed, expired or revoked token yields no session, and the call
- * acts as the anonymous principal (`REQ-MP-7`).
+ * acts as the anonymous principal (`REQ-MP-7`). A recently revoked operator
+ * session is carried beside it, for `operators.reportAdmission` alone.
  */
 export function makeCreateContext(services: Services) {
   return async ({ req }: CreateFastifyContextOptions): Promise<Context> => {
     const token = bearerToken(req.headers.authorization);
     const session: SessionInfo | null =
       token === null ? null : await services.auth.authenticate(token);
-    return { requestId: req.id, session, principal: session?.principal ?? ANONYMOUS, services };
+    // Only a token naming no live session is looked up again, as a revoked operator's.
+    const revokedOperator =
+      token === null || session !== null
+        ? null
+        : await services.auth.authenticateRevokedOperator(token);
+    return {
+      requestId: req.id,
+      session,
+      principal: session?.principal ?? ANONYMOUS,
+      revokedOperator,
+      services,
+    };
   };
 }

@@ -45,6 +45,7 @@ const services: Services = {
     beginHolderLink: refusing,
     completeHolderLink: refusing,
     authenticate: refusing,
+    authenticateRevokedOperator: refusing,
     signOut: refusing,
   },
   events: new Proxy({} as Services["events"], { get: () => refusing }),

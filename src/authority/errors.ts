@@ -27,6 +27,7 @@ export class SpecCodeError extends Error {
 export class RefusedRequest extends Error {
   readonly transport:
     | "BAD_REQUEST"
+    | "UNAUTHORIZED"
     | "FORBIDDEN"
     | "NOT_FOUND"
     | "CONFLICT"

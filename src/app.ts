@@ -103,6 +103,7 @@ function unavailableServices(): Services {
       beginHolderLink: unavailable,
       completeHolderLink: unavailable,
       authenticate: unavailable,
+      authenticateRevokedOperator: unavailable,
       signOut: unavailable,
     },
     events: unavailableService<Services["events"]>(),
