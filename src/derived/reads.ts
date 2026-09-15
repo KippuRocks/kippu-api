@@ -218,6 +218,25 @@ export function createReads(options: ReadsOptions): Reads {
       return { flags: matched.flags, freshness: freshnessOf(matched.freshness) };
     },
 
+    async holderCredentials(account, sessionId) {
+      const linked = await store.query<{ holder_credential: string | null }>(
+        "SELECT holder_credential FROM sessions WHERE id = $1 AND holder_account = $2",
+        [sessionId, account],
+      );
+      const linkedWith = linked.rows[0]?.holder_credential ?? null;
+      const read = await queries.credentials(account as AccountId);
+      return {
+        credentials: read.result.map(({ value, sequence }) => ({
+          credential: value.credential,
+          registeredAt: value.registeredAt,
+          linkedThisSession: value.credential === linkedWith,
+          sequence,
+          authoritative: false,
+        })),
+        freshness: freshnessOf(read.freshness),
+      };
+    },
+
     async holdings(account) {
       const read = await queries.holdings(account as AccountId);
       const events = new Map<string, Promise<EventView | null>>();

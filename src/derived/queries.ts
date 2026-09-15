@@ -157,6 +157,8 @@ export interface RegisteredCredential {
   readonly account: AccountId;
   readonly credential: CredentialId;
   readonly registration: Registration;
+  /** When the ledger recorded the registration, by its clock (Unix ms). */
+  readonly registeredAt: Timestamp;
 }
 
 interface CredentialRow {
@@ -164,6 +166,7 @@ interface CredentialRow {
   account: string;
   credential: string;
   registration: Buffer;
+  registered_at: string;
   sequence: string;
 }
 
@@ -173,6 +176,7 @@ function credentialOf(row: CredentialRow): Projected<RegisteredCredential> {
       account: row.account as AccountId,
       credential: row.credential as CredentialId,
       registration: new Uint8Array(row.registration) as Registration,
+      registeredAt: int(row.registered_at),
     },
     row.sequence,
   );
@@ -440,9 +444,11 @@ export function createDerivedQueries(store: Store): DerivedQueries {
     async credential(account, credential) {
       const { rows, freshness } = await read<CredentialRow>(
         store,
-        `SELECT head.*, c.credential AS id, c.account, c.credential, c.registration, c.sequence
+        `SELECT head.*, c.credential AS id, c.account, c.credential, c.registration,
+           l.recorded_at AS registered_at, c.sequence
          FROM head
-         LEFT JOIN derived_credentials c ON c.account = $1 AND c.credential = $2`,
+         LEFT JOIN derived_credentials c ON c.account = $1 AND c.credential = $2
+         LEFT JOIN derived_log l ON l.sequence = c.sequence`,
         [account, credential],
       );
       const row = rows[0];
@@ -455,9 +461,11 @@ export function createDerivedQueries(store: Store): DerivedQueries {
     async credentials(account) {
       const { rows, freshness } = await read<CredentialRow>(
         store,
-        `SELECT head.*, c.credential AS id, c.account, c.credential, c.registration, c.sequence
+        `SELECT head.*, c.credential AS id, c.account, c.credential, c.registration,
+           l.recorded_at AS registered_at, c.sequence
          FROM head
          LEFT JOIN derived_credentials c ON c.account = $1
+         LEFT JOIN derived_log l ON l.sequence = c.sequence
          ORDER BY c.sequence, c.credential`,
         [account],
       );

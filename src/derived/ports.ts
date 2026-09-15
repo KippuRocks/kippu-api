@@ -225,6 +225,22 @@ export interface AdmissionFlagsRead {
   readonly freshness: ReadFreshness;
 }
 
+/** A credential registered to the holder's own account (`REQ-CP-6`, `T-025-13`). */
+export interface HolderCredentialView extends CopiedFact {
+  /** The credential id the profile derives from its registration: public, never a key. */
+  readonly credential: string;
+  /** When the ledger recorded its registration, by the ledger's clock (Unix ms). */
+  readonly registeredAt: number;
+  /** Whether it is the credential this holder session proved control of when it was linked. */
+  readonly linkedThisSession: boolean;
+}
+
+export interface HolderCredentialsRead {
+  /** In registration order. */
+  readonly credentials: readonly HolderCredentialView[];
+  readonly freshness: ReadFreshness;
+}
+
 /** What the read routers reach. */
 export interface Reads {
   /** An event, by id. Public: browsing needs no account (`REQ-MP-7`). */
@@ -245,6 +261,12 @@ export interface Reads {
    * operators are read.
    */
   admissionFlags(organiserId: string, event: string): Promise<AdmissionFlagsRead>;
+  /**
+   * The credentials registered to a holder's own account, for Saifu's device list
+   * (`T-030-13`), marking the one the session was linked with. Read for the
+   * account of the session asking, never for another.
+   */
+  holderCredentials(account: string, sessionId: string): Promise<HolderCredentialsRead>;
   /** The tickets a holder's account holds, by event (`US-D1`, `US-E1`). */
   holdings(account: string): Promise<HoldingsRead>;
   /** Waits, up to `timeout` ms, until the copy reflects a write's receipt cursor (`F-025` plan §5.3). */
