@@ -2,7 +2,7 @@ import type { EventId } from "@ticketto/sdk";
 import type { OrganiserAuthority } from "../authority/authority.js";
 import { RefusedRequest } from "../authority/errors.js";
 import type { KippuTicketto } from "../ledger/ticketto.js";
-import { hasHadHold, lockEventAllocations } from "../sales/allocation.js";
+import { hasHadHold, lockEventAllocations, unpricedClasses } from "../sales/allocation.js";
 import type { Store } from "../store/store.js";
 import { ownedEvent } from "./ownership.js";
 import type {
@@ -39,7 +39,10 @@ export interface SaleAssetsOptions {
 /**
  * Each event's sale asset (`T-021-14`; `F-021` plan, "Prices"): chosen by the
  * organiser, at creation or later, and fixed once the event has had a hold or a
- * sale. It is Kippu's, and never reaches the ledger (`AC-B4.2`).
+ * sale. It is Kippu's, and never reaches the ledger (`AC-B4.2`). Changing it from
+ * one asset to another clears every `Purchased` class's price in the same
+ * transaction; the event is not on sale until each is re-priced. Choosing the
+ * first asset, or setting the one in force, clears nothing.
  *
  * A change is made under the event's allocation lock — the lock every hold is
  * placed under (`src/sales/allocation.ts`) — so no hold can be placed between
@@ -71,7 +74,12 @@ export function createSaleAssets(options: SaleAssetsOptions): SaleAssets {
         [event],
       )
     ).rows[0];
-    return { event, asset: row?.asset ?? null, fixed: await hasHadHold(db, event) };
+    return {
+      event,
+      asset: row?.asset ?? null,
+      fixed: await hasHadHold(db, event),
+      unpriced: await unpricedClasses(db, event),
+    };
   };
 
   return {
@@ -89,10 +97,20 @@ export function createSaleAssets(options: SaleAssetsOptions): SaleAssets {
               "CONFLICT",
             );
           }
+          if (current.asset !== null) {
+            // A price is in its asset's minor units: a new asset clears every price rather
+            // than letting it change meaning (F-021 plan, "Prices").
+            await client.query(
+              `UPDATE ticket_classes SET price = NULL, price_set_at = $2
+               WHERE event = $1 AND provenance = 'Purchased'`,
+              [input.event, now()],
+            );
+          }
           await upsert(client, organiserId, request, input.event, input.asset);
         }
+        const updated = await read(client, input.event);
         await client.query("COMMIT");
-        return { ...current, asset: input.asset };
+        return updated;
       } catch (error) {
         await client.query("ROLLBACK");
         throw error;

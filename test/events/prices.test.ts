@@ -132,6 +132,7 @@ describeWithStore("sale assets and prices", () => {
       event,
       asset: null,
       fixed: false,
+      unpriced: [],
     });
     // With no asset chosen nothing is offered, and nothing can be held.
     expect(await harness.anonymous().sales.inventory.query({ event })).toMatchObject({
@@ -144,10 +145,18 @@ describeWithStore("sale assets and prices", () => {
 
     // Chosen later, and changed freely while nothing is held.
     await organiser.client.events.setSaleAsset.mutate({ event, asset: "COPM/2" });
-    expect(await organiser.client.events.setSaleAsset.mutate({ event, asset: "DUSD/6" })).toEqual({
+    expect(
+      await organiser.client.events.setSaleAsset.mutate({ event, asset: "DUSD/6" }),
+    ).toMatchObject({
       event,
       asset: "DUSD/6",
       fixed: false,
+    });
+    // The change cleared the class's price (prices are in the asset's minor units): re-price it.
+    await organiser.client.events.classes.setPrice.mutate({
+      event,
+      class: stallsClass.id,
+      price: 5_000_000,
     });
 
     const placed = await hold(context, stallsClass.id);
@@ -160,6 +169,7 @@ describeWithStore("sale assets and prices", () => {
       event,
       asset: "DUSD/6",
       fixed: true,
+      unpriced: [],
     });
 
     // Released, the hold still happened: the asset stays fixed.
@@ -181,6 +191,100 @@ describeWithStore("sale assets and prices", () => {
     expect(
       await refusal(() => other.client.events.setSaleAsset.mutate({ event, asset: "COPM/2" })),
     ).toEqual({ code: "FORBIDDEN", errorCode: "ERR-NotOwner" });
+  });
+
+  it("changing the sale asset clears every Purchased class's price, and the event is off sale until each is re-priced", async () => {
+    const context = await setup("COPM/2");
+    const { organiser, event } = context;
+    const stallsClass = await organiser.client.events.classes.define.mutate(stalls(event));
+    const balcony = await organiser.client.events.classes.define.mutate(
+      stalls(event, { name: "Balcony", price: 12_000 }),
+    );
+    const guests = await organiser.client.events.classes.define.mutate(
+      stalls(event, { provenance: "Granted", name: "Guests", price: null }),
+    );
+    expect(await harness.anonymous().sales.inventory.query({ event })).toMatchObject({
+      onSale: true,
+    });
+
+    // 25 000 COPM/2 minor units is not 25 000 DUSD/6 minor units: the prices are cleared.
+    expect(await organiser.client.events.setSaleAsset.mutate({ event, asset: "DUSD/6" })).toEqual({
+      event,
+      asset: "DUSD/6",
+      fixed: false,
+      unpriced: [stallsClass.id, balcony.id],
+    });
+    expect(
+      (await organiser.client.events.classes.list.query({ event })).map(({ id, price }) => [
+        id,
+        price,
+      ]),
+    ).toEqual([
+      [stallsClass.id, null],
+      [balcony.id, null],
+      [guests.id, null],
+    ]);
+    expect(await harness.anonymous().sales.inventory.query({ event })).toMatchObject({
+      onSale: false,
+      asset: "DUSD/6",
+      classes: [],
+    });
+    expect(await refusal(await hold(context, stallsClass.id))).toEqual({
+      code: "PRECONDITION_FAILED",
+      errorCode: null,
+    });
+
+    // One class re-priced is not enough: every Purchased class must be.
+    await organiser.client.events.classes.setPrice.mutate({
+      event,
+      class: stallsClass.id,
+      price: 6_000_000,
+    });
+    expect(await organiser.client.events.saleAsset.query({ event })).toMatchObject({
+      unpriced: [balcony.id],
+    });
+    expect(await harness.anonymous().sales.inventory.query({ event })).toMatchObject({
+      onSale: false,
+    });
+    expect(await refusal(await hold(context, stallsClass.id))).toEqual({
+      code: "PRECONDITION_FAILED",
+      errorCode: null,
+    });
+
+    await organiser.client.events.classes.setPrice.mutate({
+      event,
+      class: balcony.id,
+      price: 3_000_000,
+    });
+    expect(await harness.anonymous().sales.inventory.query({ event })).toMatchObject({
+      onSale: true,
+      asset: "DUSD/6",
+      classes: [
+        { id: stallsClass.id, price: 6_000_000 },
+        { id: balcony.id, price: 3_000_000 },
+      ],
+    });
+    expect(await (await hold(context, stallsClass.id))()).toMatchObject({ outcome: "held" });
+  });
+
+  it("setting the asset already in force, or choosing the first one, clears no price", async () => {
+    const first = await setup();
+    const priced = await first.organiser.client.events.classes.define.mutate(stalls(first.event));
+    expect(
+      await first.organiser.client.events.setSaleAsset.mutate({
+        event: first.event,
+        asset: "COPM/2",
+      }),
+    ).toMatchObject({ asset: "COPM/2", unpriced: [] });
+    expect(
+      await first.organiser.client.events.setSaleAsset.mutate({
+        event: first.event,
+        asset: "COPM/2",
+      }),
+    ).toMatchObject({ asset: "COPM/2", unpriced: [] });
+    expect(await first.organiser.client.events.classes.list.query({ event: first.event })).toEqual([
+      expect.objectContaining({ id: priced.id, price: 25_000 }),
+    ]);
   });
 
   it("changing a price affects only holds placed afterwards", async () => {
