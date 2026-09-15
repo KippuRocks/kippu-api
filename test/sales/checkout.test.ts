@@ -23,6 +23,7 @@ const purchased = (event: string, overrides: Partial<DefineClassInput> = {}): De
   policy: { kind: "Single" },
   restrictions: { cannotResale: false, cannotTransfer: false },
   quota: null,
+  price: 25_000,
   ...overrides,
 });
 
@@ -55,6 +56,7 @@ describeWithStore("checkout sessions", () => {
         { id: unseated, kind: "Unseated" },
       ],
       capacity: 100,
+      saleAsset: "COPM/2",
     });
     await organiser.client.events.zones.addSeatPositions.mutate({
       event,
@@ -334,7 +336,7 @@ describeWithStore("checkout sessions", () => {
     });
     // A granted class's tickets are free, issued by the organiser (REQ-TC-4).
     const guests = await s.organiser.client.events.classes.define.mutate(
-      purchased(s.event, { provenance: "Granted", name: "Guests" }),
+      purchased(s.event, { provenance: "Granted", name: "Guests", price: null }),
     );
     expect(await refusal(begin({ ...base, class: guests.id }))).toEqual({
       code: "BAD_REQUEST",

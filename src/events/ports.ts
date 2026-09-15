@@ -40,11 +40,35 @@ export interface Zone {
   readonly kind: ZoneKind;
 }
 
+/**
+ * What an event's primary sales are priced in (`F-021` plan, "Prices"): `COPM/2`
+ * or `DUSD/6`, as the payment provider's checkout supports. Kippu's, never the
+ * ledger's (`AC-B4.2`).
+ */
+export type SaleAsset = "COPM/2" | "DUSD/6";
+
 /** An event to create (`US-A1`). */
 export interface CreateEventInput {
   readonly zones: readonly Zone[];
   /** Bounds issuance; `null` leaves it unbounded (`REQ-EV-3`). */
   readonly capacity: number | null;
+  /** The event's sale asset, if chosen now; it can be set later (`events.setSaleAsset`). */
+  readonly saleAsset?: SaleAsset | null;
+}
+
+/** An event's sale asset to set. */
+export interface SetSaleAssetInput {
+  readonly event: string;
+  readonly asset: SaleAsset;
+}
+
+/** An event's sale asset, and whether it can still change. */
+export interface EventSaleAsset {
+  readonly event: string;
+  /** `null` until the organiser chooses one; nothing of the event can be held before. */
+  readonly asset: SaleAsset | null;
+  /** `true` once the event has had a hold or a sale: the asset can no longer change. */
+  readonly fixed: boolean;
 }
 
 /** A write the ledger recorded. */
@@ -108,6 +132,18 @@ export interface DefineClassInput extends EventInput {
   readonly restrictions: TicketRestrictions;
   /** How many tickets the class may issue; `null` for no class quota (`REQ-TC-5`). */
   readonly quota: number | null;
+  /**
+   * A `Purchased` class's price: a positive integer in the event's sale asset's
+   * minor units, required. A `Granted` class has none (`null`, or left out).
+   */
+  readonly price?: number | null;
+}
+
+/** A `Purchased` class's new price. It applies to holds placed from now on. */
+export interface SetClassPriceInput extends EventInput {
+  readonly class: string;
+  /** A positive integer in the event's sale asset's minor units. */
+  readonly price: number;
 }
 
 /** Where a granted ticket is placed in its zone (§5.5). */
@@ -211,6 +247,8 @@ export interface TicketClass {
   /** As tickets of the class carry them: `cannotTransfer` implies `cannotResale` (`REQ-TK-2`). */
   readonly restrictions: TicketRestrictions;
   readonly quota: number | null;
+  /** A `Purchased` class's price, in the sale asset's minor units; `null` for a `Granted` class. */
+  readonly price: number | null;
   /** ISO 8601. */
   readonly createdAt: string;
 }
@@ -231,6 +269,23 @@ export interface Events {
     request: EventsRequest,
     input: CreateEventInput,
   ): Promise<CreatedEvent>;
+  /**
+   * Sets the sale asset of an event the organiser owns. Refused once the event
+   * has had a hold or a sale, unless it names the asset already set.
+   */
+  setSaleAsset(
+    organiserId: string,
+    request: EventsRequest,
+    input: SetSaleAssetInput,
+  ): Promise<EventSaleAsset>;
+  /** The sale asset of an event the organiser owns. */
+  saleAsset(organiserId: string, input: EventInput): Promise<EventSaleAsset>;
+  /** Sets a `Purchased` class's price, for holds placed from now on. */
+  setClassPrice(
+    organiserId: string,
+    request: EventsRequest,
+    input: SetClassPriceInput,
+  ): Promise<TicketClass>;
   /** Adds a zone to an event the organiser owns; the ledger accepts it only while `Active`. */
   addZone(organiserId: string, request: EventsRequest, input: AddZoneInput): Promise<Recorded>;
   /**

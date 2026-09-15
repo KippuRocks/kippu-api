@@ -246,6 +246,7 @@ describeWithStore("invitations", () => {
       granted(context.event, {
         name: "General",
         provenance: "Purchased",
+        price: 10_000,
         restrictions: { cannotResale: false, cannotTransfer: false },
       }),
     );

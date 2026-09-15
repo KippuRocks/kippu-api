@@ -13,6 +13,7 @@ import type {
   CreateInvitationInput,
   DefineClassInput,
   EventInput,
+  EventSaleAsset,
   EventsRequest,
   Invitation,
   IssuedTicket,
@@ -22,6 +23,8 @@ import type {
   RedeemedInvitation,
   RedeemInvitationInput,
   SeatPositions,
+  SetClassPriceInput,
+  SetSaleAssetInput,
   TicketClass,
   ZoneInput,
 } from "./ports.js";
@@ -59,6 +62,8 @@ async function mapped<T>(work: () => Promise<T>): Promise<T> {
 }
 
 const id32 = z.string().regex(/^[0-9a-f]{64}$/, "expected 64 lower-case hex characters");
+
+const saleAsset = z.enum(["COPM/2", "DUSD/6"]);
 const count = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 const timestamp = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 
@@ -121,6 +126,7 @@ const createEventInput = z
   .object({
     zones: z.array(zone).max(1000),
     capacity: count.nullable(),
+    saleAsset: saleAsset.nullable().optional(),
   })
   .strict();
 
@@ -133,6 +139,17 @@ const defineClassInput = z
     policy,
     restrictions: z.object({ cannotResale: z.boolean(), cannotTransfer: z.boolean() }).strict(),
     quota: count.nullable(),
+    price: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).nullable().optional(),
+  })
+  .strict();
+
+const setSaleAssetInput = z.object({ event: id32, asset: saleAsset }).strict();
+
+const setClassPriceInput = z
+  .object({
+    event: id32,
+    class: id32,
+    price: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
   })
   .strict();
 
@@ -195,6 +212,15 @@ const classesRouter = router({
       ({ ctx, input }): Promise<TicketClass> =>
         mapped(() =>
           ctx.services.events.defineClass(ctx.principal.organiserId, requestOf(ctx), input),
+        ),
+    ),
+  /** Sets a `Purchased` class's price, in the sale asset's minor units, for holds placed from now on. */
+  setPrice: organiserProcedure
+    .input(parser<SetClassPriceInput>(setClassPriceInput))
+    .mutation(
+      ({ ctx, input }): Promise<TicketClass> =>
+        mapped(() =>
+          ctx.services.events.setClassPrice(ctx.principal.organiserId, requestOf(ctx), input),
         ),
     ),
   list: organiserProcedure
@@ -279,6 +305,25 @@ export const eventsRouter = router({
         mapped(() =>
           ctx.services.events.createEvent(ctx.principal.organiserId, requestOf(ctx), input),
         ),
+    ),
+  /**
+   * Sets the event's sale asset, `COPM/2` or `DUSD/6`. Refused with `CONFLICT`
+   * once the event has had a hold or a sale (`F-021` plan, "Prices").
+   */
+  setSaleAsset: organiserProcedure
+    .input(parser<SetSaleAssetInput>(setSaleAssetInput))
+    .mutation(
+      ({ ctx, input }): Promise<EventSaleAsset> =>
+        mapped(() =>
+          ctx.services.events.setSaleAsset(ctx.principal.organiserId, requestOf(ctx), input),
+        ),
+    ),
+  /** The event's sale asset, and whether it is fixed. */
+  saleAsset: organiserProcedure
+    .input(parser<EventInput>(eventInput))
+    .query(
+      ({ ctx, input }): Promise<EventSaleAsset> =>
+        mapped(() => ctx.services.events.saleAsset(ctx.principal.organiserId, input)),
     ),
   zones: zonesRouter,
   classes: classesRouter,

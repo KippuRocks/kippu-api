@@ -15,6 +15,7 @@ const classInput = (
   policy: { kind: "Single" },
   restrictions: { cannotResale: false, cannotTransfer: false },
   quota: null,
+  price: 25_000,
   ...overrides,
 });
 
@@ -39,6 +40,7 @@ describeWithStore("public sale inventory", () => {
         { id: unseated, kind: "Unseated" },
       ],
       capacity: 5,
+      saleAsset: "COPM/2",
     });
     await organiser.client.events.zones.addSeatPositions.mutate({
       event,
@@ -52,19 +54,21 @@ describeWithStore("public sale inventory", () => {
       classInput(event, { name: "Balcony", policy: { kind: "Unlimited", until: null } }),
     );
     const guests = await organiser.client.events.classes.define.mutate(
-      classInput(event, { name: "Guests", provenance: "Granted" }),
+      classInput(event, { name: "Guests", provenance: "Granted", price: null }),
     );
     const ichiba = harness.anonymous();
 
     expect(await ichiba.sales.inventory.query({ event })).toEqual({
       event,
       onSale: true,
+      asset: "COPM/2",
       available: 5,
       classes: [
         {
           id: stalls.id,
           name: "Stalls",
           description: "Downstairs",
+          price: 25_000,
           policy: { kind: "Single" },
           available: 3,
         },
@@ -72,6 +76,7 @@ describeWithStore("public sale inventory", () => {
           id: balcony.id,
           name: "Balcony",
           description: null,
+          price: 25_000,
           policy: { kind: "Unlimited", until: null },
           available: 5,
         },
@@ -126,6 +131,7 @@ describeWithStore("public sale inventory", () => {
     const unbounded = await organiser.client.events.create.mutate({
       zones: [{ id: seated, kind: "Seated" }],
       capacity: null,
+      saleAsset: "COPM/2",
     });
     await organiser.client.events.zones.addSeatPositions.mutate({
       event: unbounded.event,
@@ -141,6 +147,7 @@ describeWithStore("public sale inventory", () => {
     const full = await organiser.client.events.create.mutate({
       zones: [{ id: seated, kind: "Seated" }],
       capacity: 0,
+      saleAsset: "COPM/2",
     });
     await organiser.client.events.zones.addSeatPositions.mutate({
       event: full.event,

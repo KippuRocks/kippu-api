@@ -24,6 +24,7 @@ const classInput = (
   policy: { kind: "Single" },
   restrictions: { cannotResale: false, cannotTransfer: false },
   quota: null,
+  price: 25_000,
   ...overrides,
 });
 
@@ -62,6 +63,7 @@ describeWithStore("issuance holds", () => {
         { id: unseated, kind: "Unseated" },
       ],
       capacity,
+      saleAsset: "COPM/2",
     });
     await organiser.client.events.zones.addSeatPositions.mutate({
       event,
@@ -159,7 +161,7 @@ describeWithStore("issuance holds", () => {
   it("INV-4: holds count against capacity together with the tickets already issued", async () => {
     const s = await setup(2);
     const guests = await s.organiser.client.events.classes.define.mutate(
-      classInput(s.event, { provenance: "Granted", name: "Guests" }),
+      classInput(s.event, { provenance: "Granted", name: "Guests", price: null }),
     );
     await s.organiser.client.events.tickets.issueGranted.mutate({
       event: s.event,
@@ -183,7 +185,7 @@ describeWithStore("issuance holds", () => {
   it("AC-B5.2: a seat already issued is refused before paying", async () => {
     const s = await setup(100);
     const guests = await s.organiser.client.events.classes.define.mutate(
-      classInput(s.event, { provenance: "Granted", name: "Guests" }),
+      classInput(s.event, { provenance: "Granted", name: "Guests", price: null }),
     );
     await s.organiser.client.events.tickets.issueGranted.mutate({
       event: s.event,

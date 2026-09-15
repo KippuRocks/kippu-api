@@ -9,6 +9,16 @@
  * `error.data.errorCode`.
  */
 
+/** Events and classes (`F-021`): sale assets and prices, for Ibento and Ichiba. */
+export type {
+  CreateEventInput,
+  DefineClassInput,
+  EventSaleAsset,
+  SaleAsset,
+  SetClassPriceInput,
+  SetSaleAssetInput,
+  TicketClass,
+} from "../../../src/events/ports.js";
 /** Checkout (`F-022`): what Ichiba and Saifu exchange over a checkout, its Saifu handoff and its hold. */
 export type {
   BeginCheckoutInput,

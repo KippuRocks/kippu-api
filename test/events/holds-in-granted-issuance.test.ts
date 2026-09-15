@@ -57,6 +57,7 @@ describeWithStore("outstanding holds in granted issuance and invitations", () =>
         { id: unseated, kind: "Unseated" },
       ],
       capacity,
+      saleAsset: "DUSD/6",
     });
     await organiser.client.events.zones.addSeatPositions.mutate({
       event,
@@ -64,7 +65,7 @@ describeWithStore("outstanding holds in granted issuance and invitations", () =>
       positions: ["A-1", "A-2"],
     });
     const stalls = await organiser.client.events.classes.define.mutate(
-      classInput(event, "Stalls", { provenance: "Purchased" }),
+      classInput(event, "Stalls", { provenance: "Purchased", price: 20_000_000 }),
     );
     const guests = await organiser.client.events.classes.define.mutate(classInput(event, "Guests"));
     return { organiser, event, seated, unseated, stalls: stalls.id, guests: guests.id };

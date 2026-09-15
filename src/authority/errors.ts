@@ -22,7 +22,7 @@ export class SpecCodeError extends Error {
  * message, with no §10 code.
  */
 export class RefusedRequest extends Error {
-  readonly transport: "BAD_REQUEST" | "NOT_FOUND" | "CONFLICT";
+  readonly transport: "BAD_REQUEST" | "NOT_FOUND" | "CONFLICT" | "PRECONDITION_FAILED";
 
   constructor(message: string, transport: RefusedRequest["transport"] = "BAD_REQUEST") {
     super(message);

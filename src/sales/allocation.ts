@@ -1,4 +1,5 @@
 import type { Event } from "@ticketto/sdk";
+import type { SaleAsset } from "../events/ports.js";
 import type { Queryable, SeatAllocation } from "../events/seats.js";
 import { positionOf } from "../events/zones.js";
 
@@ -34,10 +35,56 @@ export async function lockAllocation(
   if (target.position !== null) {
     await seats.lock(db, target.event, target.zone, positionOf(target.position));
   }
+  await lockEventAllocations(db, target.event);
+}
+
+/**
+ * Takes only the event's allocation lock: for a change to the event's sale terms
+ * that must see every hold (`T-021-14`). It locks no seat, so it takes the second
+ * lock of the order and nothing after it is out of order.
+ */
+export async function lockEventAllocations(db: Queryable, event: string): Promise<void> {
   await db.query("SELECT pg_advisory_xact_lock($1, hashtext($2))", [
     ALLOCATION_LOCK_NAMESPACE,
-    target.event,
+    event,
   ]);
+}
+
+/** The terms a hold is placed on (`F-021` plan, "Prices"). */
+export interface SaleTerms {
+  readonly asset: SaleAsset;
+  /** A positive integer in the asset's minor units. */
+  readonly price: number;
+}
+
+/**
+ * The event's sale asset and the class's current price — what a hold placed now
+ * records — or `null` when the event has no sale asset or the class no price.
+ * Read under the event's allocation lock, so the asset cannot change in between.
+ */
+export async function saleTerms(
+  db: Queryable,
+  event: string,
+  classId: string,
+): Promise<SaleTerms | null> {
+  const row = (
+    await db.query<{ asset: SaleAsset | null; price: string | null }>(
+      `SELECT (SELECT asset FROM event_sale_assets WHERE event = $1) AS asset,
+              (SELECT price FROM ticket_classes WHERE id = $2 AND event = $1) AS price`,
+      [event, classId],
+    )
+  ).rows[0];
+  if (row === undefined || row.asset === null || row.price === null) return null;
+  return { asset: row.asset, price: Number(row.price) };
+}
+
+/**
+ * Whether the event has had any hold, in any status. A sale needs a hold, so this
+ * is also whether it has had a sale: its sale asset is fixed once it has.
+ */
+export async function hasHadHold(db: Queryable, event: string): Promise<boolean> {
+  const found = await db.query("SELECT 1 FROM holds WHERE event = $1 LIMIT 1", [event]);
+  return (found.rowCount ?? 0) > 0;
 }
 
 /** What counts against an allocation, read under its locks. */

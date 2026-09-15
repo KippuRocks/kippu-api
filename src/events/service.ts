@@ -6,6 +6,7 @@ import { createEventWith } from "./create-event.js";
 import { createInvitations, type Invitations } from "./invitations.js";
 import { issueGrantedWith } from "./issuance.js";
 import type { Events } from "./ports.js";
+import { createSaleAssets, type SaleAssets } from "./sale-assets.js";
 import { createSeatAllocation, type SeatAllocation } from "./seats.js";
 import { createZones, type Zones } from "./zones.js";
 
@@ -28,10 +29,12 @@ export function createEvents(options: EventsOptions): Events & {
   readonly invitations: Invitations;
   /** The seated double-allocation pre-check, for every way of allocating a seat (`F-022` holds). */
   readonly seats: SeatAllocation;
+  readonly saleAssets: SaleAssets;
 } {
   const classes = createClasses(options);
   const zones = createZones(options);
   const seats = createSeatAllocation(options);
+  const saleAssets = createSaleAssets(options);
   const issueGranted = issueGrantedWith({ ...options, classes, zones, seats });
   const invitations = createInvitations({ ...options, classes, zones, issueGranted });
   return {
@@ -39,7 +42,11 @@ export function createEvents(options: EventsOptions): Events & {
     zones,
     invitations,
     seats,
-    createEvent: createEventWith(options),
+    saleAssets,
+    createEvent: createEventWith({ ...options, saleAssets }),
+    setSaleAsset: (organiserId, request, input) => saleAssets.set(organiserId, request, input),
+    saleAsset: (organiserId, input) => saleAssets.get(organiserId, input),
+    setClassPrice: (organiserId, request, input) => classes.setPrice(organiserId, request, input),
     addZone: (organiserId, request, input) => zones.addZone(organiserId, request, input),
     removeZone: (organiserId, request, input) => zones.removeZone(organiserId, request, input),
     addSeatPositions: (organiserId, request, input) =>

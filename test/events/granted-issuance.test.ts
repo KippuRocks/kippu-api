@@ -401,7 +401,7 @@ describeWithStore("granted issuance", () => {
   it("refuses a Purchased class: its tickets are sold through checkout, never granted", async () => {
     const context = await setup();
     const general = await context.organiser.client.events.classes.define.mutate(
-      granted(context.event, { provenance: "Purchased" }),
+      granted(context.event, { provenance: "Purchased", price: 10_000 }),
     );
     const sponsoredBefore = harness.sponsored.length;
 

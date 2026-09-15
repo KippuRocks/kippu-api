@@ -53,6 +53,7 @@ describeWithStore("ticket classes", () => {
       name: "General admission",
       description: null,
       provenance: "Purchased",
+      price: 150_000,
       policy: { kind: "Multiple", max: 3, until: null },
       restrictions: { cannotResale: false, cannotTransfer: false },
       quota: 500,
@@ -119,8 +120,8 @@ describeWithStore("ticket classes", () => {
     await expect(
       harness.database.store.query(
         `INSERT INTO ticket_classes (id, event, organiser_id, name, provenance, policy,
-           cannot_resale, cannot_transfer, created_request_id, created_at)
-         VALUES ($1, $2, $3, 'Scalpable', 'Purchased', '{"kind":"Single"}', true, false, 'r', now())`,
+           cannot_resale, cannot_transfer, created_request_id, created_at, price)
+         VALUES ($1, $2, $3, 'Scalpable', 'Purchased', '{"kind":"Single"}', true, false, 'r', now(), 100)`,
         [randomId(), randomId(), organiser.organiserId],
       ),
     ).rejects.toThrow(/ticket_classes_purchased_unrestricted/);

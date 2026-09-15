@@ -65,6 +65,7 @@ describeWithStore("the public index of events on sale", () => {
     name: provenance === "Purchased" ? "General admission" : "Guest list",
     description: null,
     provenance,
+    price: provenance === "Purchased" ? 5_000 : null,
     policy: { kind: "Single" as const },
     restrictions: { cannotResale: false, cannotTransfer: false },
     quota: null,
