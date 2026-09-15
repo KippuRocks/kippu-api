@@ -140,6 +140,8 @@ type Queryable = Pick<Store, "query">;
  *   ended and the place is gone: a refund entitlement, never a ticket without a
  *   hold. A payment that lands after the hold lapsed, while the place is still
  *   free, takes the hold back and is issued.
+ * - **Face value.** Confirming a hold records the ticket's face value — the
+ *   price and asset its hold recorded — in the same transaction (`T-022-06`).
  * - A submission with no verdict leaves the sale `failed` and the hold counting,
  *   since the ticket may exist; it records no refund.
  */
@@ -341,6 +343,12 @@ export function createPayments(options: PaymentsOptions): Payments {
           await client.query(
             "UPDATE holds SET status = 'confirmed', confirmed_at = $2 WHERE id = $1",
             [hold.hold_id, now()],
+          );
+          // The ticket's face value, for its life: the price its hold recorded (T-022-06).
+          await client.query(
+            `INSERT INTO face_values (ticket, event, class_id, sale_id, amount, asset, recorded_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+            [fields.ticket, hold.event, hold.class_id, saleId, hold.price, hold.asset, now()],
           );
         } else if (status === "rejected") {
           // Not issued: the place is given back, whatever the hold's lifetime said.

@@ -45,10 +45,16 @@ export async function createTestDatabase(): Promise<TestDatabase> {
   }
   const url = withDatabase(serverUrl, name);
   const store = createStore(url);
+  // `store.end()` resolves once its clients are asked to close, not once their sockets have:
+  // dropping the database with FORCE may terminate one still closing. Such a client has
+  // already left the pool, so its error would be uncaught; `drop` expects it.
+  const clients = new Set<pg.PoolClient>();
+  store.on("connect", (client) => clients.add(client));
   return {
     url,
     store,
     async drop() {
+      for (const client of clients) client.on("error", () => {});
       await store.end();
       const client = new pg.Client({ connectionString: serverUrl });
       await client.connect();
