@@ -16,8 +16,8 @@ import {
 } from "../../src/metadata/storage.js";
 
 /**
- * An S3-compatible server the tests may create buckets on: locally the MinIO
- * from `compose.yaml`, in CI a MinIO container.
+ * An S3-compatible server the tests may create buckets on: locally the SeaweedFS
+ * S3 gateway from `compose.yaml`, in CI a SeaweedFS container.
  */
 const endpoint = process.env.KIPPU_TEST_S3_ENDPOINT;
 const accessKeyId = process.env.KIPPU_TEST_S3_ACCESS_KEY_ID ?? "";
