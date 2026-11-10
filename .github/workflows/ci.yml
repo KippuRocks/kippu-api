@@ -9,10 +9,11 @@ permissions:
   contents: read
 
 env:
-  # RELEASE.2025-09-07T16-13-09Z, by digest (the multi-architecture index).
-  MINIO_IMAGE_DIGEST: sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
-  MINIO_IMAGE: quay.io/minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
-  MINIO_LOCAL_TAG: kippu-ci/minio:pinned
+  # SeaweedFS 4.51 (Docker Hub, pushed 2026-10-26), by digest (the multi-architecture index).
+  # MinIO withdrew its images, so SeaweedFS's S3 gateway is the S3-compatible stand-in.
+  SEAWEED_IMAGE_DIGEST: sha256:f7a49e3f3972ebed5be2ed4befa4a0c68eb7bdddba6e692d42729ceb545134b8
+  SEAWEED_IMAGE: chrislusf/seaweedfs@sha256:f7a49e3f3972ebed5be2ed4befa4a0c68eb7bdddba6e692d42729ceb545134b8
+  SEAWEED_LOCAL_TAG: kippu-ci/seaweedfs:pinned
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -46,7 +47,7 @@ jobs:
       # The development wiring: backend-memory, a software KMS, a development sponsor.
       KIPPU_LEDGER_ENVIRONMENT: development
       KIPPU_TEST_DATABASE_URL: postgres://kippu_api:kippu_api_ci@127.0.0.1:5432/kippu_api
-      # Metadata object storage: a MinIO stand-in (F-026). No provider is chosen yet.
+      # Metadata object storage: a SeaweedFS S3 gateway stand-in (F-026). No provider is chosen yet.
       KIPPU_TEST_S3_ENDPOINT: http://127.0.0.1:9000
       KIPPU_TEST_S3_ACCESS_KEY_ID: kippu_metadata
       KIPPU_TEST_S3_SECRET_ACCESS_KEY: kippu_metadata_ci
@@ -57,37 +58,43 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
-      # A service container cannot be given MinIO's `server` command, so it is started here.
-      # MinIO withdrew its Docker Hub images, so the image comes from quay.io, pinned by
-      # digest. It is kept in the Actions cache, and quay.io is reached only on a cache miss,
-      # with retries, so a registry outage does not block CI.
-      - name: Restore the MinIO image from the cache
-        id: minio-image
+      # A service container cannot be given SeaweedFS's `server` command, so it is started here.
+      # The image comes from Docker Hub, pinned by digest. It is kept in the Actions cache, and
+      # Docker Hub is reached only on a cache miss, with retries, so a registry outage does not
+      # block CI.
+      - name: Restore the SeaweedFS image from the cache
+        id: seaweed-image
         uses: actions/cache@v6
         with:
-          path: /tmp/minio-image.tar
-          key: minio-image-${{ env.MINIO_IMAGE_DIGEST }}
-      - name: Pull the MinIO image on a cache miss
-        if: steps.minio-image.outputs.cache-hit != 'true'
+          path: /tmp/seaweedfs-image.tar
+          key: seaweedfs-image-${{ env.SEAWEED_IMAGE_DIGEST }}
+      - name: Pull the SeaweedFS image on a cache miss
+        if: steps.seaweed-image.outputs.cache-hit != 'true'
         run: |
           for attempt in 1 2 3 4 5; do
-            if docker pull "$MINIO_IMAGE"; then break; fi
-            if [ "$attempt" = 5 ]; then echo "quay.io did not serve $MINIO_IMAGE" >&2; exit 1; fi
+            if docker pull "$SEAWEED_IMAGE"; then break; fi
+            if [ "$attempt" = 5 ]; then echo "Docker Hub did not serve $SEAWEED_IMAGE" >&2; exit 1; fi
             sleep $((attempt * 15))
           done
           # `docker load` does not restore a repository digest, so the cached image is tagged.
-          docker tag "$MINIO_IMAGE" "$MINIO_LOCAL_TAG"
-          docker save "$MINIO_LOCAL_TAG" -o /tmp/minio-image.tar
-      - name: Start the metadata object storage stand-in (MinIO)
+          docker tag "$SEAWEED_IMAGE" "$SEAWEED_LOCAL_TAG"
+          docker save "$SEAWEED_LOCAL_TAG" -o /tmp/seaweedfs-image.tar
+      - name: Start the metadata object storage stand-in (SeaweedFS S3 gateway)
         run: |
-          if ! docker image inspect "$MINIO_LOCAL_TAG" >/dev/null 2>&1; then
-            docker load -i /tmp/minio-image.tar
+          if ! docker image inspect "$SEAWEED_LOCAL_TAG" >/dev/null 2>&1; then
+            docker load -i /tmp/seaweedfs-image.tar
           fi
-          docker run -d --name kippu-metadata-storage -p 9000:9000 \
-            -e MINIO_ROOT_USER=kippu_metadata -e MINIO_ROOT_PASSWORD=kippu_metadata_ci \
-            "$MINIO_LOCAL_TAG" server /data
-          for _ in $(seq 1 30); do
-            if curl -fsS http://127.0.0.1:9000/minio/health/live; then exit 0; fi
+          # The tests create their own buckets. The admin identity comes from the AWS_* variables.
+          docker run -d --name kippu-metadata-storage -p 9000:9000 -p 9333:9333 \
+            -e AWS_ACCESS_KEY_ID=kippu_metadata -e AWS_SECRET_ACCESS_KEY=kippu_metadata_ci \
+            "$SEAWEED_LOCAL_TAG" server -dir=/data -s3 -s3.port=9000 \
+            -master.volumeSizeLimitMB=64 -volume.max=32
+          # Ready once the master reports a leader and the S3 gateway answers (403 unsigned).
+          for _ in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:9333/cluster/status | grep -q '"IsLeader":true' \
+              && [ "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:9000/)" != 000 ]; then
+              exit 0
+            fi
             sleep 1
           done
           docker logs kippu-metadata-storage
@@ -127,8 +134,8 @@ jobs:
           KIPPU_METADATA_S3_SECRET_ACCESS_KEY: kippu_metadata_ci
           KIPPU_METADATA_EDGE_PORT: "8081"
         run: |
-          docker exec kippu-metadata-storage sh -c \
-            'mc alias set local http://127.0.0.1:9000 kippu_metadata kippu_metadata_ci && mc mb local/kippu-metadata'
+          echo "s3.bucket.create -name kippu-metadata" \
+            | docker exec -i kippu-metadata-storage weed shell -master=127.0.0.1:9333
           pnpm metadata:publish-schemas
           pnpm metadata:check-self-contained
           pnpm metadata:edge &
