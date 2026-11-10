@@ -134,8 +134,8 @@ jobs:
           KIPPU_METADATA_S3_SECRET_ACCESS_KEY: kippu_metadata_ci
           KIPPU_METADATA_EDGE_PORT: "8081"
         run: |
-          docker exec kippu-metadata-storage sh -c \
-            'mc alias set local http://127.0.0.1:9000 kippu_metadata kippu_metadata_ci && mc mb local/kippu-metadata'
+          echo "s3.bucket.create -name kippu-metadata" \
+            | docker exec -i kippu-metadata-storage weed shell -master=127.0.0.1:9333
           pnpm metadata:publish-schemas
           pnpm metadata:check-self-contained
           pnpm metadata:edge &
